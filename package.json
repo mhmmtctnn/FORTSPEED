@@ -1,0 +1,20 @@
+{
+  "name": "misyonspeedtest-root",
+  "version": "1.0.0",
+  "scripts": {
+    "test:utils": "jest tests/",
+    "test:backend": "cd backend && npm test",
+    "test:frontend": "cd frontend && npm test",
+    "test": "npm run test:utils && npm run test:backend && npm run test:frontend"
+  },
+  "dependencies": {
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testMatch": ["**/tests/**/*.test.js"],
+    "testEnvironment": "node"
+  }
+}

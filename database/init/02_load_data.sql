@@ -1,0 +1,9 @@
+-- Data loading intentionally disabled during init.
+--
+-- Reason:
+-- The previous COPY commands referenced absolute container paths that do not
+-- exist by default and caused initialization errors on fresh volumes.
+--
+-- Recommended loading path:
+-- Run the root-level Node loader after containers are up:
+--   node load_data.js
