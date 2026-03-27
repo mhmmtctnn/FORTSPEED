@@ -1,10 +1,33 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
-import { BarChart3, Filter, Download, Trophy, Globe, Activity, ListFilter } from 'lucide-react';
+import { BarChart3, Filter, Download, Trophy, Globe, Activity, ListFilter, Calendar, X } from 'lucide-react';
 import { Mission, CityRow, Filters, FilterOptions, ReportType, fmt, getBestDownload } from '../types';
 import { useNocSummary } from '../hooks/useQueries';
 
 const COLORS = ['#38bdf8', '#a855f7', '#facc15', '#4ade80', '#f43f5e', '#fb923c', '#9ca3af'];
+
+const today = () => new Date().toISOString().split('T')[0];
+const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+const DATA_MIN = '2025-08-19';
+
+const QUICK_DATE = [
+  { label: 'Bugün',   fn: () => ({ startDate: today(), endDate: today() }) },
+  { label: '7 Gün',  fn: () => ({ startDate: daysAgo(7),  endDate: today() }) },
+  { label: '30 Gün', fn: () => ({ startDate: daysAgo(30), endDate: today() }) },
+  { label: '3 Ay',   fn: () => ({ startDate: daysAgo(90), endDate: today() }) },
+  { label: 'Tümü',   fn: () => ({ startDate: '', endDate: '' }) },
+];
+
+function validateDateRange(s: string, e: string): string {
+  const t = today();
+  if (s && e) {
+    if (s > e) return 'Başlangıç tarihi bitiş tarihinden sonra olamaz.';
+    if (s > t || e > t) return 'Gelecek tarih seçilemez.';
+    if (s < DATA_MIN) return `Veri en erken ${new Date(DATA_MIN).toLocaleDateString('tr-TR')} tarihinden itibaren mevcut.`;
+  } else if (s && !e) return 'Bitiş tarihini de seçin.';
+  else if (!s && e) return 'Başlangıç tarihini de seçin.';
+  return '';
+}
 
 const CustomTooltip = React.memo(({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -59,6 +82,38 @@ function exportCsv(data: Record<string, unknown>[], filename: string) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
 }
 
+async function exportPdf(data: Record<string, unknown>[], filename: string) {
+  if (!data.length) return;
+  const { jsPDF } = await import('jspdf');
+  const { default: autoTable } = await import('jspdf-autotable');
+  const doc = new jsPDF({ orientation: 'landscape' });
+  doc.setFontSize(14);
+  doc.text('FORTSPEED - Ağ Raporu', 14, 15);
+  doc.setFontSize(9);
+  doc.text(`Oluşturulma: ${new Date().toLocaleString('tr-TR')}`, 14, 22);
+  const keys = Object.keys(data[0]);
+  autoTable(doc, {
+    head: [keys],
+    body: data.map(r => keys.map(k => String(r[k] ?? ''))),
+    startY: 28,
+    styles: { fontSize: 7, cellPadding: 2 },
+    headStyles: { fillColor: [56, 189, 248], textColor: 0, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [240, 248, 255] },
+  });
+  doc.save(filename);
+}
+
+async function exportImage(elementId: string, filename: string, type: 'png' | 'jpeg') {
+  const html2canvas = (await import('html2canvas')).default;
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const canvas = await html2canvas(el, { backgroundColor: '#0f172a', scale: 2, useCORS: true });
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = canvas.toDataURL(`image/${type}`, 0.95);
+  link.click();
+}
+
 const SparkCell = ({ data, color = "var(--accent)" }: { data?: any[], color?: string }) => {
   if (!data || !data.length) return <span style={{color:'var(--border)', fontSize:'0.7rem'}}>Veri Yok</span>;
   return (
@@ -85,6 +140,8 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
   const [showAllVpnMissions, setShowAllVpnMissions] = useState(false);
   const [nocPeriod, setNocPeriod] = useState<'daily'|'weekly'|'monthly'>('monthly');
   const [nocMetric, setNocMetric] = useState<'dl'|'ul'>('dl');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const reportContentRef = useRef<HTMLDivElement>(null);
   const { data: nocData, isFetching: nocLoading } = useNocSummary(nocPeriod);
 
   const toggleSort = (col: string) => {
@@ -111,11 +168,21 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
   // Yeni Analitik Dönüşümleri (Frontend Aggregation)
   const countryAnalytics = useMemo(() => {
     if (!filters.country) return null;
-    const cMissions = missions.filter(m => String(m.country).trim() === filters.country);
+
+    // Önce ülkeye göre filtrele
+    let cMissions = missions.filter(m => String(m.country).trim() === filters.country);
+
+    // Misyon seçildiyse sadece o misyonu göster
+    if (filters.missionId) {
+      const filtered = cMissions.filter(m => String(m.id) === filters.missionId);
+      // Eşleşme varsa sadece o misyon; yoksa ülkenin tamamı (güvenlik)
+      if (filtered.length > 0) cMissions = filtered;
+    }
+
     if (!cMissions.length) return null;
 
     const bestMission = [...cMissions].sort((a, b) => getBestDownload(b) - getBestDownload(a))[0];
-    
+
     let gsmSum = 0, gsmCount = 0, metroSum = 0, metroCount = 0;
     cMissions.forEach(m => {
       if (m.gsm_download) { gsmSum += m.gsm_download; gsmCount++; }
@@ -129,10 +196,10 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
 
     const missionPie = cMissions.map(m => ({
       name: m.name, value: getBestDownload(m), unit: 'Mbps'
-    })).filter(x => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 8); // Top 8 in Pie chart
+    })).filter(x => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
 
     return { bestMission, vpnCompare, missionPie, count: cMissions.length };
-  }, [missions, filters.country]);
+  }, [missions, filters.country, filters.missionId]);
 
   const continentAnalytics = useMemo(() => {
     if (!filters.continent) return null;
@@ -145,7 +212,15 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
        const cn = String(m.country || 'Bilinmeyen');
        countryCounts[cn] = (countryCounts[cn] || 0) + 1;
     });
-    const countryPie = Object.entries(countryCounts).map(([name, value]) => ({ name, value, unit: 'Misyon' })).sort((a,b)=>b.value-a.value);
+    const sortedCountries = Object.entries(countryCounts)
+       .map(([name, value]) => ({ name, value, unit: 'Misyon' }))
+       .sort((a,b)=>b.value-a.value);
+       
+    const countryPie = sortedCountries.slice(0, 7);
+    const othersCount = sortedCountries.slice(7).reduce((sum, item) => sum + item.value, 0);
+    if (othersCount > 0) {
+      countryPie.push({ name: 'Diğer', value: othersCount, unit: 'Misyon' });
+    }
     
     const bestMissions = [...cMissions].sort((a, b) => getBestDownload(b) - getBestDownload(a)).slice(0, 10)
          .map(m => ({ name: m.name, Ülke: m.country, İndirme: getBestDownload(m), unit: 'Mbps' }));
@@ -180,6 +255,16 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
     Yükleme: Number(Number(r.avg_upload).toFixed(1)),
   }));
 
+  // Client-side koruma: backend ne döndürse seçilen ülke/kıta filtresi uygulanır
+  const filteredCountryReports = useMemo(() => {
+    const norm = (s: unknown) => String(s || '').replace(/\u0130/g, 'I').replace(/\u0131/g, 'I').replace(/i/g, 'I').toUpperCase().trim();
+    return countryReports.filter(r => {
+      if (filters.country && norm(r.country) !== norm(filters.country)) return false;
+      if (filters.continent && norm(r.continent) !== norm(filters.continent)) return false;
+      return true;
+    });
+  }, [countryReports, filters.country, filters.continent]);
+
   const missionChartData = sortData(missionReports).slice(0, 15).map(r => ({
     name: String(r.mission_name ?? '?'),
     İndirme: Number(Number(r.avg_download).toFixed(1)),
@@ -210,21 +295,25 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
           <Filter size={14} color="var(--text-muted)" style={{ flexShrink: 0 }}/>
 
           {/* Kıta */}
-          <select className="form-control" style={{ width: 'auto', minWidth: 130 }} value={filters.continent}
-            onChange={e => onFiltersChange({ ...filters, continent: e.target.value, country: '', missionId: '' })}>
-            <option value="">Tüm Kıtalar</option>
-            {filterOptions.continents.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          {['continents', 'countries', 'missions', 'vpns', 'all'].includes(filters.reportType) && (
+            <select className="form-control" style={{ width: 'auto', minWidth: 130 }} value={filters.continent}
+              onChange={e => onFiltersChange({ ...filters, continent: e.target.value, country: '', missionId: '' })}>
+              <option value="">Tüm Kıtalar</option>
+              {filterOptions.continents.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
 
           {/* Ülke */}
-          <select className="form-control" style={{ width: 'auto', minWidth: 130 }} value={filters.country}
-            onChange={e => onFiltersChange({ ...filters, country: e.target.value, missionId: '' })}>
-            <option value="">Ülke Seç</option>
-            {availableCountries.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          {['countries', 'missions', 'vpns', 'all'].includes(filters.reportType) && (
+            <select className="form-control" style={{ width: 'auto', minWidth: 130 }} value={filters.country}
+              onChange={e => onFiltersChange({ ...filters, country: e.target.value, missionId: '' })}>
+              <option value="">Ülke Seç</option>
+              {availableCountries.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
 
           {/* Misyon (ülke seçilince görünür) */}
-          {filters.country && (() => {
+          {['missions', 'all'].includes(filters.reportType) && filters.country && (() => {
             const countryMissions = missions
               .filter(m => String(m.country || '').trim() === filters.country)
               .sort((a, b) => a.name.localeCompare(b.name));
@@ -238,45 +327,117 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
           })()}
 
           {/* Tarih Aralığı */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 8px' }}>
-            <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Başlangıç</label>
-            <input type="date" className="form-control" style={{ width: '130px', border: 'none', background: 'transparent', padding: '6px 2px' }}
-              value={filters.startDate} onChange={e => onFiltersChange({ ...filters, startDate: e.target.value })}/>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 8px' }}>
-            <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Biliş</label>
-            <input type="date" className="form-control" style={{ width: '130px', border: 'none', background: 'transparent', padding: '6px 2px' }}
-              value={filters.endDate} onChange={e => onFiltersChange({ ...filters, endDate: e.target.value })}/>
-          </div>
+          {filters.reportType !== 'summary' && (() => {
+            const dateErr = validateDateRange(filters.startDate, filters.endDate);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  background: 'var(--bg-base)', padding: '6px 10px',
+                  borderRadius: dateErr ? 'var(--radius) var(--radius) 0 0' : 'var(--radius)',
+                  border: `1px solid ${dateErr ? 'rgba(239,68,68,0.5)' : 'var(--border)'}`,
+                  borderBottom: dateErr ? 'none' : undefined, flexWrap: 'nowrap', transition: 'border-color 0.2s'
+                }}>
+                  <Calendar size={13} color={dateErr ? 'var(--red, #f43f5e)' : 'var(--text-muted)'} style={{ flexShrink: 0 }}/>
+                  <input type="date" className="form-control"
+                    style={{ width: 'auto', borderColor: dateErr && filters.startDate ? 'var(--red)' : undefined }}
+                    value={filters.startDate} min={DATA_MIN} max={today()}
+                    onChange={e => onFiltersChange({ ...filters, startDate: e.target.value })}/>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                  <input type="date" className="form-control"
+                    style={{ width: 'auto', borderColor: dateErr && filters.endDate ? 'var(--red)' : undefined }}
+                    value={filters.endDate} min={filters.startDate || DATA_MIN} max={today()}
+                    onChange={e => onFiltersChange({ ...filters, endDate: e.target.value })}/>
+                  {(filters.startDate || filters.endDate) && (
+                    <button className="btn btn-secondary" style={{ padding: '4px 7px' }}
+                      onClick={() => onFiltersChange({ ...filters, startDate: '', endDate: '' })}>
+                      <X size={11}/>
+                    </button>
+                  )}
+                  <div style={{ display: 'flex', gap: '3px', marginLeft: '4px' }}>
+                    {QUICK_DATE.map(q => (
+                      <button key={q.label} className="tab-btn"
+                        style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                        onClick={() => { const r = q.fn(); onFiltersChange({ ...filters, startDate: r.startDate, endDate: r.endDate }); }}
+                      >{q.label}</button>
+                    ))}
+                  </div>
+                </div>
+                {dateErr && (
+                  <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderTop: 'none',
+                    color: '#fca5a5', padding: '5px 10px', borderRadius: '0 0 var(--radius) var(--radius)',
+                    fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>⚠ {dateErr}</div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Hız Eşiği Filtresi */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 8px' }}>
-            <Activity size={12} color="var(--text-muted)" />
-            <input type="number" className="form-control" placeholder="Min Mbps" min={0} step={1}
-              style={{ width: '90px', border: 'none', background: 'transparent', padding: '6px 2px', fontSize: '0.8rem' }}
-              value={filters.minSpeed} onChange={e => onFiltersChange({ ...filters, minSpeed: e.target.value })}/>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>–</span>
-            <input type="number" className="form-control" placeholder="Max Mbps" min={0} step={1}
-              style={{ width: '90px', border: 'none', background: 'transparent', padding: '6px 2px', fontSize: '0.8rem' }}
-              value={filters.maxSpeed} onChange={e => onFiltersChange({ ...filters, maxSpeed: e.target.value })}/>
-          </div>
+          {filters.reportType !== 'summary' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 8px' }}>
+              <Activity size={12} color="var(--text-muted)" />
+              <input type="number" className="form-control" placeholder="Min Mbps" min={0} step={1}
+                style={{ width: '90px', border: 'none', background: 'transparent', padding: '6px 2px', fontSize: '0.8rem' }}
+                value={filters.minSpeed} onChange={e => onFiltersChange({ ...filters, minSpeed: e.target.value })}/>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>–</span>
+              <input type="number" className="form-control" placeholder="Max Mbps" min={0} step={1}
+                style={{ width: '90px', border: 'none', background: 'transparent', padding: '6px 2px', fontSize: '0.8rem' }}
+                value={filters.maxSpeed} onChange={e => onFiltersChange({ ...filters, maxSpeed: e.target.value })}/>
+            </div>
+          )}
 
           <button className="btn btn-primary" onClick={onApply} disabled={loading} style={{ marginLeft: 'auto' }}>
             {loading ? 'Yükleniyor...' : 'Uygula'}
           </button>
-          {(missionReports.length > 0 || countryReports.length > 0 || continentReports.length > 0 || reports.length > 0) && (
-            <button className="btn btn-secondary" onClick={() => {
-              const data = missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports;
-              exportCsv(data, `rapor-${filters.reportType}-${Date.now()}.csv`);
-            }}>
-              <Download size={13}/> CSV
+
+          {/* Export Menüsü */}
+          <div style={{ position: 'relative' }}>
+            <button className="btn btn-secondary"
+              onClick={() => setExportMenuOpen(p => !p)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Download size={13}/> Dışa Aktar ▾
             </button>
-          )}
+
+            {exportMenuOpen && (
+              <div
+                style={{ position: 'absolute', right: 0, top: '110%', zIndex: 200,
+                  background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)', overflow: 'hidden', minWidth: 140,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+                onMouseLeave={() => setExportMenuOpen(false)}
+              >
+                {[
+                  { label: '📊 CSV', action: () => {
+                    const data = missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports;
+                    exportCsv(data, `rapor-${filters.reportType}-${Date.now()}.csv`);
+                  }},
+                  { label: '📄 PDF', action: () => {
+                    const data = missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports;
+                    exportPdf(data, `rapor-${filters.reportType}-${Date.now()}.pdf`);
+                  }},
+                  { label: '🖼️ PNG', action: () => exportImage('report-content-area', `rapor-${filters.reportType}-${Date.now()}.png`, 'png') },
+                  { label: '📷 JPEG', action: () => exportImage('report-content-area', `rapor-${filters.reportType}-${Date.now()}.jpeg`, 'jpeg') },
+                ].map(item => (
+                  <button key={item.label}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px',
+                      background: 'transparent', border: 'none', color: 'var(--text)', cursor: 'pointer',
+                      fontSize: '0.85rem', transition: 'background 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => { item.action(); setExportMenuOpen(false); }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, padding: '0 32px 32px', overflowY: 'auto' }}>
+      <div id="report-content-area" style={{ flex: 1, padding: '0 32px 32px', overflowY: 'auto' }}>
 
         {/* NOC Executive Summary Dashboard */}
         {filters.reportType === 'summary' && (
@@ -486,12 +647,12 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
               </div>
             )}
 
-            {countryReports.length > 0 && (
+            {filteredCountryReports.length > 0 && (
               <>
                 <div className="glass-card" style={{ padding: '20px', marginBottom: '16px' }}>
                    <div className="section-title">Genel Hız Dağılımı ve Toplam Ziyaretler (İlk 15)</div>
                    <ResponsiveContainer width="100%" height={240}>
-                     <BarChart data={sortData(countryReports).map(r => ({ name: String(r.country), ToplamTest: Number(r.total_tests), Max_İndirme: Number(Number(r.max_download).toFixed(1)), Ort_İndirme: Number(Number(r.avg_download).toFixed(1)) })).slice(0, 15)} margin={{top:10}}>
+                     <BarChart data={sortData(filteredCountryReports).map(r => ({ name: String(r.country), ToplamTest: Number(r.total_tests), Max_İndirme: Number(Number(r.max_download).toFixed(1)), Ort_İndirme: Number(Number(r.avg_download).toFixed(1)) })).slice(0, 15)} margin={{top:10}}>
                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
                        <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
                        <YAxis yAxisId="left" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false}/>
@@ -516,7 +677,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                       <SortTh col="max_download" label="Maks ↓" right/>
                     </tr></thead>
                     <tbody>
-                      {sortData(countryReports).map((r, i) => (
+                      {sortData(filteredCountryReports).map((r, i) => (
                         <tr key={i}>
                           <td style={{ fontWeight: 600 }}>{String(r.country ?? '–')}</td>
                           <td><span className="badge badge-neutral">{String(r.continent ?? '–')}</span></td>
@@ -533,7 +694,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                 </div>
               </>
             )}
-            {!countryReports.length && !countryAnalytics && <div style={{padding: '40px', textAlign:'center', color:'var(--text-muted)'}}>Gösterilecek sonuç bulunamadı.</div>}
+            {!filteredCountryReports.length && !countryAnalytics && <div style={{padding: '40px', textAlign:'center', color:'var(--text-muted)'}}>Gösterilecek sonuç bulunamadı.</div>}
           </div>
         )}
 
@@ -553,13 +714,13 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>Kıtadaki Ülkelerin Misyon Kapasitesi</div>
                      <ResponsiveContainer width="100%" height={220}>
                        <PieChart>
-                         <Pie data={continentAnalytics.countryPie} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
+                         <Pie data={continentAnalytics.countryPie} cx="35%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
                            {continentAnalytics.countryPie.map((entry, index) => (
                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                            ))}
                          </Pie>
                          <Tooltip content={<CustomTooltip />}/>
-                         <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px', paddingTop: '8px' }} iconType="circle"/>
+                         <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '10px', width: '50%' }} iconType="circle"/>
                        </PieChart>
                      </ResponsiveContainer>
                   </div>

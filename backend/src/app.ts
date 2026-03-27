@@ -45,10 +45,180 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     });
   }
 
-  // 1. Webhook Ingestion
+  // ─── Webhook Helper Functions (ported from BW/server.ps1) ──────────────────
+
+  /** Convert speed value + unit string to Mbps (number | null) */
+  function convertToMbps(value: string, unit: string): number | null {
+    if (!value || !unit) return null;
+    const normalized = value.replace(',', '.').trim();
+    const num = parseFloat(normalized);
+    if (isNaN(num)) return null;
+    const u = unit.trim().toLowerCase();
+    if (/^g(bps|bit\/s|bits?\/sec|bits?\/s)$|^giga?bits?\/sec$/.test(u)) return num * 1000;
+    if (/^m(bps|bit\/s|bits?\/sec|bits?\/s)$|^mega?bits?\/sec$|^mbits?\/sec$|^mbit\/s$/.test(u)) return num;
+    if (/^k(bps|bit\/s|bits?\/sec|bits?\/s)$|^kilo?bits?\/sec$/.test(u)) return num / 1000;
+    if (/^(bps|bit\/s|bits?\/sec|bits?\/s)$/.test(u)) return num / 1_000_000;
+    if (/g(bit|bits)?\/s(ec)?/.test(u)) return num * 1000;
+    if (/m(bit|bits)?\/s(ec)?/.test(u)) return num;
+    if (/k(bit|bits)?\/s(ec)?/.test(u)) return num / 1000;
+    return num; // fallback: assume Mbps
+  }
+
+  /** Classify VPN name as GSM or METRO */
+  function resolveVpnType(vpnName: string | null): 'GSM' | 'METRO' {
+    if (!vpnName) return 'METRO';
+    if (/\b(GSM|LTE|4G|5G|Cell|Mobile)\b/i.test(vpnName)) return 'GSM';
+    if (/\b(METRO|MPLS|Fiber|Leased|Karasal)\b/i.test(vpnName)) return 'METRO';
+    return 'METRO';
+  }
+
+  /** Parse raw FortiGate / BW speed-test body text */
+  function parseSpeedTestBody(body: string) {
+    const lines = body.split(/\r?\n/);
+    let deviceName: string | null = null;
+    let vpnName: string | null = null;
+    let upValue: string | null = null;
+    let upUnit: string | null = null;
+    let downValue: string | null = null;
+    let downUnit: string | null = null;
+
+    // FortiGate CLI format: "DEVICE_NAME execute speed-test-ipsec VPN_NAME"
+    for (const line of lines) {
+      const m = line.match(/^\s*(\S+)\s+execute speed-test-ipsec\s+(\S+)/);
+      if (m) { deviceName = m[1]; vpnName = m[2]; break; }
+    }
+
+    // client(sender): up_speed: X Unit
+    const upCliLine = lines.find(l => /client\(sender\):\s*up_speed/.test(l));
+    if (upCliLine) {
+      const m = upCliLine.match(/up_speed:\s*([0-9.,]+)\s*([A-Za-z/]+)/);
+      if (m) { upValue = m[1]; upUnit = m[2]; }
+    }
+
+    // client(recver): down_speed: X Unit
+    const downCliLine = lines.find(l => /client\(recver\):\s*down_speed/.test(l));
+    if (downCliLine) {
+      const m = downCliLine.match(/down_speed:\s*([0-9.,]+)\s*([A-Za-z/]+)/);
+      if (m) { downValue = m[1]; downUnit = m[2]; }
+    }
+
+    // Turkish label fallback
+    if (!deviceName) {
+      const dl = lines.find(l => /^\s*Cihaz Ad[ıi]\s*:/i.test(l));
+      if (dl) { const m = dl.match(/:\s*(.+)$/); if (m) deviceName = m[1].trim(); }
+    }
+    if (!vpnName) {
+      const vl = lines.find(l => /^\s*VPN Ad[ıi]\s*:/i.test(l));
+      if (vl) { const m = vl.match(/:\s*(.+)$/); if (m) vpnName = m[1].trim(); }
+    }
+    if (!upValue) {
+      const ul = lines.find(l => /^\s*Upload H[ıi]z[ıi]\s*:/i.test(l));
+      if (ul) { const m = ul.match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]+(?:\/[A-Za-z]+)?)\s*$/); if (m) { upValue = m[1]; upUnit = m[2]; } }
+    }
+    if (!downValue) {
+      const dl2 = lines.find(l => /^\s*Download H[ıi]z[ıi]\s*:/i.test(l));
+      if (dl2) { const m = dl2.match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]+(?:\/[A-Za-z]+)?)\s*$/); if (m) { downValue = m[1]; downUnit = m[2]; } }
+    }
+
+    // Generic key: value fallback for Upload/Download
+    if (!upValue) {
+      const ul = lines.find(l => /^\s*upload[\s_-]*speed\s*:/i.test(l));
+      if (ul) { const m = ul.match(/:\s*([0-9.,]+)\s*([A-Za-z/]+)/i); if (m) { upValue = m[1]; upUnit = m[2]; } }
+    }
+    if (!downValue) {
+      const dl3 = lines.find(l => /^\s*download[\s_-]*speed\s*:/i.test(l));
+      if (dl3) { const m = dl3.match(/:\s*([0-9.,]+)\s*([A-Za-z/]+)/i); if (m) { downValue = m[1]; downUnit = m[2]; } }
+    }
+
+    return { deviceName, vpnName, upValue, upUnit, downValue, downUnit };
+  }
+
+  // ─── Webhook Stats tracker (in-memory) ──────────────────────────────────────
+  const webhookStats = { total: 0, today: 0, lastDay: '' };
+
+  function trackWebhookStat() {
+    const today = new Date().toISOString().split('T')[0];
+    if (webhookStats.lastDay === today) { webhookStats.today++; }
+    else { webhookStats.today = 1; webhookStats.lastDay = today; }
+    webhookStats.total++;
+  }
+
+  // ─── 1b. FortiGate Raw Text Webhook (BW/server.ps1 equivalent) ─────────────
+  fastify.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => done(null, body));
+
+  fastify.post('/api/webhook', async (request, reply) => {
+    const rawBody = (request.body as string) || '';
+    const parsed = parseSpeedTestBody(rawBody);
+
+    const deviceName = (parsed.deviceName || 'UNKNOWN').trim();
+    const vpnTypeName = resolveVpnType(parsed.vpnName);
+    const uploadMbps   = parsed.upValue && parsed.upUnit ? convertToMbps(parsed.upValue, parsed.upUnit) : null;
+    const downloadMbps = parsed.downValue && parsed.downUnit ? convertToMbps(parsed.downValue, parsed.downUnit) : null;
+    const uploadStatus   = uploadMbps   !== null ? 'OK' : 'N/A';
+    const downloadStatus = downloadMbps !== null ? 'OK' : 'N/A';
+
+    fastify.log.info(`Webhook recv: device=${deviceName} vpn=${vpnTypeName} up=${uploadMbps} down=${downloadMbps}`);
+
+    try {
+      // Upsert Cities (CityName = DeviceName)
+      const cityRes = await fastify.pg.query<{ cityid: number }>(
+        `INSERT INTO Cities (CityName) VALUES ($1)
+         ON CONFLICT (CityName) DO UPDATE SET CityName = EXCLUDED.CityName
+         RETURNING CityID`,
+        [deviceName]
+      );
+      const cityId = cityRes.rows[0].cityid;
+
+      // Upsert VpnTypes
+      const vpnRes = await fastify.pg.query<{ vpntypeid: number }>(
+        `INSERT INTO VpnTypes (VpnTypeName) VALUES ($1)
+         ON CONFLICT (VpnTypeName) DO UPDATE SET VpnTypeName = EXCLUDED.VpnTypeName
+         RETURNING VpnTypeID`,
+        [vpnTypeName]
+      );
+      const vpnTypeId = vpnRes.rows[0].vpntypeid;
+
+      // Insert SpeedStats
+      await fastify.pg.query(
+        `INSERT INTO SpeedStats (CityID, VpnTypeID, DeviceName, DownloadSpeed, UploadSpeed, Latency, UploadStatus, DownloadStatus, MeasuredAt)
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, NOW())`,
+        [cityId, vpnTypeId, deviceName, downloadMbps, uploadMbps, uploadStatus, downloadStatus]
+      );
+
+      // WebSocket broadcast → harita anlık güncellenir
+      await redis.publish('speedtest_updates', JSON.stringify({
+        cityId, vpnTypeId,
+        download: downloadMbps, upload: uploadMbps,
+        latency: 0, deviceName,
+        time: new Date().toISOString(),
+      }));
+
+      trackWebhookStat();
+
+      return reply.send({
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        device: deviceName,
+        vpn_connection: parsed.vpnName,
+        vpn_type: vpnTypeName,
+        upload_mbps: uploadMbps,
+        download_mbps: downloadMbps,
+        upload_status: uploadStatus,
+        download_status: downloadStatus,
+        webhook_stats: { total: webhookStats.total, today: webhookStats.today },
+      });
+    } catch (err) {
+      fastify.log.error(err, 'Webhook DB error');
+      return reply.status(500).send({ status: 'Error', message: 'DB error' });
+    }
+  });
+
+  // Webhook stats endpoint
+  fastify.get('/api/webhook/stats', async () => webhookStats);
+
+  // ─── 1. Legacy JSON Webhook (backward compat) ───────────────────────────────
   fastify.post('/webhook/speedtest', async (request, reply) => {
     const { cityId, vpnTypeId, deviceName, downloadSpeed, uploadSpeed, latency, uploadStatus, downloadStatus } = request.body as any;
-
     const query = `
       INSERT INTO SpeedStats (CityID, VpnTypeID, DeviceName, DownloadSpeed, UploadSpeed, Latency, UploadStatus, DownloadStatus, MeasuredAt)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
@@ -73,6 +243,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       return reply.status(500).send({ error: 'DB Error' });
     }
   });
+
 
   // 2. Map API
   fastify.get('/api/missions', async (_request, reply) => {
@@ -199,7 +370,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   // 6. Country-based reports
   fastify.get('/api/reports/by-country', async (request, reply) => {
-    const { startDate, endDate, continent } = request.query as any;
+    const { startDate, endDate, continent, country, minSpeed, maxSpeed } = request.query as any;
     let query = `
       SELECT c.ULKE as country, c.KITA as continent,
              COUNT(DISTINCT c.CityID) as total_missions, COUNT(*) as total_tests,
@@ -210,11 +381,14 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       FROM Cities c LEFT JOIN SpeedStats ss ON ss.CityID = c.CityID
       WHERE 1=1
     `;
-    const params: any[] = [];
+    const params: unknown[] = [];
     let paramIdx = 1;
     if (startDate) { query += ` AND ss.MeasuredAt >= $${paramIdx++}`; params.push(startDate); }
     if (endDate)   { query += ` AND ss.MeasuredAt <= $${paramIdx++}`; params.push(endDate); }
     if (continent) { query += ` AND c.KITA = $${paramIdx++}`; params.push(continent); }
+    if (country)   { query += ` AND c.ULKE = $${paramIdx++}`; params.push(country); }
+    if (minSpeed)  { query += ` AND ss.DownloadSpeed >= $${paramIdx++}`; params.push(Number(minSpeed)); }
+    if (maxSpeed)  { query += ` AND ss.DownloadSpeed <= $${paramIdx++}`; params.push(Number(maxSpeed)); }
     query += ` GROUP BY c.ULKE, c.KITA ORDER BY avg_download DESC`;
     try {
       const { rows } = await fastify.pg.query(query, params);

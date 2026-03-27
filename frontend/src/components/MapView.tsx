@@ -110,6 +110,8 @@ export default function MapView({
   const worldFlagsLoaded = useRef(false);
   const flagLayerIds = useRef<string[]>([]);
   const flagImageIds = useRef<string[]>([]);
+  const showFlagsRef = useRef(showFlags);
+  showFlagsRef.current = showFlags;
 
   // Kıta değişince ülkeleri filtrele
   const availableCountries = useMemo(() => {
@@ -143,6 +145,7 @@ export default function MapView({
   const loadWorldFlags = useCallback(async () => {
     const map = mapRef.current?.getMap();
     if (!map || !map.isStyleLoaded() || worldFlagsLoaded.current) return;
+    if (!showFlagsRef.current) return; // showFlags kapalıysa yükleme yapma
     worldFlagsLoaded.current = true;
 
     try {
@@ -280,7 +283,18 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
-    if (!map || !showFlags) return;
+    if (!map) return;
+    if (!showFlags) {
+      // Bayraklar kapalıyken layer eklenmesin; zaten eklenmiş olanları gizle
+      flagLayerIds.current.forEach(id => {
+        if (map.isStyleLoaded() && map.getLayer(id)) {
+          map.setLayoutProperty(id, 'visibility', 'none');
+        }
+      });
+      return;
+    }
+    // showFlags=true: bayrak henüz yüklenmemişse yükle
+    if (worldFlagsLoaded.current) return;
     if (map.isStyleLoaded()) loadWorldFlags();
     else map.once('load', loadWorldFlags);
   }, [loadWorldFlags, showFlags]);
