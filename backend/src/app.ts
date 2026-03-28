@@ -3,9 +3,11 @@ import cors from '@fastify/cors';
 import postgres from '@fastify/postgres';
 import websocket from '@fastify/websocket';
 import Redis from 'ioredis';
+import { registerItaiMiddleware } from './middleware/itai';
 
 export interface AppOptions {
   testing?: boolean;
+  itaiMode?: boolean;
   pgUrl?: string;
   redisUrl?: string;
   mockPg?: any;
@@ -16,6 +18,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   const fastify = Fastify({ logger: opts.testing ? false : true });
 
   fastify.register(cors, { origin: true });
+
+  // ITAI Hub integration — SSO, trace ID, cookie config
+  await registerItaiMiddleware(fastify, { itaiMode: opts.itaiMode });
 
   if (opts.mockPg) {
     fastify.decorate('pg', opts.mockPg);
