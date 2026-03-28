@@ -1,6 +1,9 @@
 # Backend: Node.js + Fastify (Production build)
 FROM node:20-alpine AS builder
 
+ARG ITAI_MODE=false
+ENV ITAI_MODE=${ITAI_MODE}
+
 WORKDIR /app
 
 # Tüm bağımlılıkları yükle (dev dahil — derleme için gerekli)
@@ -13,6 +16,9 @@ RUN npm run build
 
 # ------- Runtime stage -------
 FROM node:20-alpine
+
+ARG ITAI_MODE=false
+ENV ITAI_MODE=${ITAI_MODE}
 
 WORKDIR /app
 

@@ -43,6 +43,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=development
       - PORT=3000
+      - ITAI_MODE=${ITAI_MODE:-false}
+      - ITAI_JWT_SECRET=${ITAI_JWT_SECRET:-}
+      - FORTSPEED_API_KEY=${FORTSPEED_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
