@@ -3,12 +3,17 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/fortspeed
 
 jobs:
   lint:
@@ -138,3 +143,76 @@ jobs:
 
       - name: Security audit - frontend
         run: cd frontend && npm audit --audit-level=high || true
+
+  publish:
+    name: Publish Docker Images
+    needs: [lint, test, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          VER=$(node -p "require('./backend/package.json').version")
+          echo "app_version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine Docker tags
+        id: tags
+        run: |
+          VER="${{ steps.version.outputs.app_version }}"
+          SHA="sha-${{ steps.version.outputs.short_sha }}"
+
+          # Community edition tags (standalone)
+          COMMUNITY="${REGISTRY}/${IMAGE_NAME}:latest"
+          COMMUNITY="${COMMUNITY},${REGISTRY}/${IMAGE_NAME}:${VER}"
+          COMMUNITY="${COMMUNITY},${REGISTRY}/${IMAGE_NAME}:${SHA}"
+
+          # ITAI edition tags (Hub integration)
+          ITAI="${REGISTRY}/${IMAGE_NAME}:latest-itai"
+          ITAI="${ITAI},${REGISTRY}/${IMAGE_NAME}:${VER}-itai"
+          ITAI="${ITAI},${REGISTRY}/${IMAGE_NAME}:${SHA}-itai"
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            COMMUNITY="${COMMUNITY},${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}"
+            ITAI="${ITAI},${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}-itai"
+          fi
+
+          echo "community=${COMMUNITY}" >> "$GITHUB_OUTPUT"
+          echo "itai=${ITAI}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Community edition
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.tags.outputs.community }}
+          build-args: ITAI_MODE=false
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=FORTSPEED Community Edition (standalone)
+
+      - name: Build and push ITAI edition
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.tags.outputs.itai }}
+          build-args: ITAI_MODE=true
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=FORTSPEED ITAI Edition (Hub integration)
