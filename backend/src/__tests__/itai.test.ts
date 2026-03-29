@@ -65,6 +65,22 @@ describe('ITAI SSO — Disabled Mode', () => {
     const body = JSON.parse(res.body);
     expect(body.code).toBe('SSO_DISABLED');
   });
+
+  it('GET / returns 200 HTML dashboard even when disabled', async () => {
+    const res = await app.inject({ method: 'GET', url: '/' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.body).toContain('FORTSPEED NOC');
+  });
+
+  it('GET /health returns 200 with itai_mode false', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('healthy');
+    expect(body.module).toBe('fortspeed-noc');
+    expect(body.itai_mode).toBe(false);
+  });
 });
 
 // --- SSO Enabled (ITAI_MODE=true) ---
@@ -162,6 +178,51 @@ describe('ITAI SSO — Enabled Mode', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.username).toBe('user-123');
+  });
+
+  it('GET /health returns 200 with itai_mode true', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('healthy');
+    expect(body.itai_mode).toBe(true);
+  });
+
+  it('GET / returns 200 HTML dashboard', async () => {
+    const res = await app.inject({ method: 'GET', url: '/' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.body).toContain('FORTSPEED NOC');
+  });
+
+  it('GET /?itai_token=<valid> sets itaiUser on request', async () => {
+    const token = createTestJWT(
+      {
+        sub: 'admin',
+        preferred_username: 'iframe_user',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      },
+      TEST_SECRET,
+    );
+    const res = await app.inject({
+      method: 'GET',
+      url: `/?itai_token=${token}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+  });
+
+  it('GET /?itai_token=<expired> still returns 200 HTML (silent fail)', async () => {
+    const token = createTestJWT(
+      { sub: 'admin', exp: Math.floor(Date.now() / 1000) - 3600 },
+      TEST_SECRET,
+    );
+    const res = await app.inject({
+      method: 'GET',
+      url: `/?itai_token=${token}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
   });
 });
 
