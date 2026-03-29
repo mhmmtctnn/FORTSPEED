@@ -145,14 +145,37 @@ export async function registerItaiMiddleware(
 
   fastify.log.info('ITAI_MODE is enabled — registering middleware.');
 
-  // Trace ID propagation
+  // Trace ID propagation + SSO auto-login via query param
   fastify.addHook(
     'onRequest',
-    async (request: FastifyRequest, _reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      // Trace ID
       const traceId =
         (request.headers['x-itai-trace-id'] as string) ||
         crypto.randomUUID();
       (request as any).itaiTraceId = traceId;
+
+      // SSO auto-login via itai_token query param (iframe first load)
+      const query = request.query as Record<string, string>;
+      const itaiToken = query?.itai_token;
+      if (itaiToken) {
+        const jwtSecret = getJwtSecret();
+        if (jwtSecret) {
+          const payload = verifyHS256Token(itaiToken, jwtSecret);
+          if (payload) {
+            const username =
+              (payload.preferred_username as string) ||
+              (payload.sub as string) ||
+              'itai_user';
+            fastify.log.info(`SSO auto-login via query param for user: ${username}`);
+            // Decorate request with SSO user info for downstream use
+            (request as any).itaiSsoUser = username;
+            (request as any).itaiSsoPayload = payload;
+          } else {
+            fastify.log.warn('SSO query param token verification failed.');
+          }
+        }
+      }
     },
   );
 
