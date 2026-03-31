@@ -2,8 +2,8 @@ import { useRef, useEffect, useCallback, useMemo } from 'react';
 import Map, { Marker, NavigationControl, Popup, MapRef, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp } from 'lucide-react';
-import { Mission, StatPoint, FilterOptions, VpnTab, fmt, getMarkerColor, getQualityClass, getQualityLabel } from '../types';
+import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck } from 'lucide-react';
+import { Mission, StatPoint, FilterOptions, VpnTab, getMarkerColor, getQualityClass, getQualityLabel } from '../types';
 
 interface Props {
   missions: Mission[];
@@ -17,73 +17,14 @@ interface Props {
   filteredMissions: Mission[];
   showFlags: boolean;
   showHeatmap: boolean;
+  theme?: 'dark' | 'light';
+  merkezFW: { lat: number; lon: number; name: string };
   onMarkerClick: (m: Mission) => void;
   onSetPopup: (m: Mission | null) => void;
   onSetVpnTab: (t: VpnTab) => void;
   onMapFilterChange: (f: { continent: string; country: string }) => void;
 }
 
-// Türkçe ülke adı → ISO 3166-1 alpha-2 (flagcdn.com için)
-const COUNTRY_ISO: Record<string, string> = {
-  // AVRUPA
-  'ALMANYA': 'de', 'ARNAVUTLUK': 'al', 'AVUSTURYA': 'at', 'BELARUS': 'by',
-  'BELCIKA': 'be', 'BOSNA HERSEK': 'ba', 'BOSNAHERSEK': 'ba', 'BRITANYA': 'gb',
-  'BULGARISTAN': 'bg', 'CEK CUMHURIYETI': 'cz', 'DANIMARKA': 'dk', 'DANİMARKA': 'dk',
-  'ESTONYA': 'ee', 'FINLANDIYA': 'fi', 'FRANSA': 'fr', 'HIRVATISTAN': 'hr',
-  'HOLLANDA': 'nl', 'INGILTERE': 'gb', 'IRLANDA': 'ie', 'ISPANYA': 'es',
-  'ISVEC': 'se', 'ISVICRE': 'ch', 'ITALYA': 'it', 'KARADAG': 'me',
-  'KOSOVA': 'xk', 'KUZEY MAKEDONYA': 'mk', 'LETONYA': 'lv', 'LITVANYA': 'lt',
-  'LUKSEMBURG': 'lu', 'MACARISTAN': 'hu', 'MALTA': 'mt', 'MODOVA': 'md',
-  'MOLDOVA': 'md', 'NORVEC': 'no', 'POLONYA': 'pl', 'PORTEKIZ': 'pt',
-  'ROMANYA': 'ro', 'SIRBISTAN': 'rs', 'SLOVAKYA': 'sk', 'SLOVENYA': 'si',
-  'TURKIYE': 'tr', 'TÜRKİYE': 'tr', 'UKRAYNA': 'ua', 'VATIKAN': 'va',
-  'YUNANISTAN': 'gr', 'RUSYA': 'ru',
-  // ASYA
-  'AFGANISTAN': 'af', 'AZERBAYCAN': 'az', 'BAHREYN': 'bh', 'BANGLADES': 'bd',
-  'BIRLESIK ARAP EMIRLIKLERI': 'ae', 'BIRLESIKARAPEMIRLIKLERI': 'ae',
-  'BRUNEI': 'bn', 'CIN HALK CUMHURIYETI': 'cn', 'ENDONEZYA': 'id',
-  'FILIPINLER': 'ph', 'FILISTIN': 'ps', 'GUNEY KORE': 'kr', 'GURCISTAN': 'ge',
-  'HINDISTAN': 'in', 'IRAK': 'iq', 'IRAN': 'ir', 'ISRAIL': 'il',
-  'JAPONYA': 'jp', 'KAMBOCYA': 'kh', 'KATAR': 'qa', 'KAZAKISTAN': 'kz',
-  'KIRGIZISTAN': 'kg', 'KKTC': 'cy', 'KUVEYT': 'kw', 'LAOS': 'la',
-  'LUBNAN': 'lb', 'MALEZYA': 'my', 'MOGOLISTAN': 'mn', 'MYANMAR': 'mm',
-  'OZBEKISTAN': 'uz', 'PAKISTAN': 'pk', 'SINGAPUR': 'sg', 'SRI LANKA': 'lk',
-  'SURIYE': 'sy', 'SUUDI ARABISTAN': 'sa', 'TACIKISTAN': 'tj', 'TAYLAND': 'th',
-  'TAYVAN': 'tw', 'TURKMENISTAN': 'tm', 'UMMAN': 'om', 'URDUN': 'jo',
-  'VIETNAM': 'vn', 'BURKINA FASO': 'bf',
-  // AFRİKA
-  'ANGOLA': 'ao', 'BENIN': 'bj', 'BOTSVANA': 'bw', 'BURUNDI': 'bi',
-  'CAD': 'td', 'CEZAYIR': 'dz', 'CIBUTI': 'dj',
-  'DEMOKRATIK KONGO CUMHURIYETI': 'cd', 'EKVATOR GINESI': 'gq', 'ERITRE': 'er',
-  'ETIYOPYA': 'et', 'FAS': 'ma', 'FILDISI': 'ci', 'GABON': 'ga',
-  'GAMBIYA': 'gm', 'GANA': 'gh', 'GINE': 'gn', 'GUNEY AFRIKA': 'za',
-  'GUNEY SUDAN CUMHURIYETI': 'ss', 'KAMERUN': 'cm', 'KENYA': 'ke',
-  'KONGO': 'cg', 'LIBYA': 'ly', 'MADAGASKAR': 'mg', 'MALI': 'ml',
-  'MISIR': 'eg', 'MORITANYA': 'mr', 'MOZAMBIK': 'mz', 'NAMIBYA': 'na',
-  'NIGER CUMHURIYETI': 'ne', 'NIJERYA': 'ng', 'RUANDA': 'rw', 'SENEGAL': 'sn',
-  'SIERRA LEONE': 'sl', 'SOMALI': 'so', 'SUDAN': 'sd', 'TANZANYA': 'tz',
-  'TOGO': 'tg', 'TUNUS': 'tn', 'UGANDA': 'ug', 'ZAMBIYA': 'zm', 'ZIMBABVE': 'zw',
-  // KUZEY AMERİKA
-  'AMERIKA BIRLESIK DEVLETLERI': 'us', 'DOMINIK': 'do', 'GUATEMALA': 'gt',
-  'KANADA': 'ca', 'KOSTA RIKA': 'cr', 'KUBA': 'cu', 'MEKSIKA': 'mx', 'PANAMA': 'pa',
-  // GÜNEY AMERİKA
-  'ARJANTIN': 'ar', 'BOLIVYA': 'bo', 'BREZILYA': 'br', 'EKVATOR': 'ec',
-  'KOLOMBIYA': 'co', 'PARAGUAY': 'py', 'PERU': 'pe', 'SILI': 'cl', 'VENEZUELLA': 've',
-  // AVUSTRALYA
-  'AVUSTRALYA': 'au', 'YENİ ZELANDA': 'nz',
-};
-
-// Kıta renkleri (fill layer için)
-const CONTINENT_FILL: Record<string, string> = {
-  'AVRUPA': 'rgba(56,189,248,0.12)',
-  'ASYA': 'rgba(168,85,247,0.12)',
-  'AFRIKA': 'rgba(245,158,11,0.12)',
-  'KUZEY AMERIKA': 'rgba(34,197,94,0.12)',
-  'KUZEY AMEIRKA': 'rgba(34,197,94,0.12)',
-  'GUNEY AMERIKA': 'rgba(239,68,68,0.12)',
-  'AVUSTRALYA': 'rgba(249,115,22,0.12)',
-  'AVUSTURALYA': 'rgba(249,115,22,0.12)',
-};
 
 function getBbox(geometry: { type: string; coordinates: unknown }): [number, number, number, number] {
   let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
@@ -100,9 +41,35 @@ function getBbox(geometry: { type: string; coordinates: unknown }): [number, num
   return [minLon, minLat, maxLon, maxLat];
 }
 
+// Küresel arc: iki nokta arasında yayın koordinatlarını hesapla
+function greatCircleArc(
+  from: [number, number], to: [number, number], steps = 64
+): [number, number][] {
+  const toRad = (d: number) => d * Math.PI / 180;
+  const toDeg = (r: number) => r * 180 / Math.PI;
+  const [lon1, lat1] = from.map(toRad);
+  const [lon2, lat2] = to.map(toRad);
+  const d = 2 * Math.asin(Math.sqrt(
+    Math.sin((lat2 - lat1) / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
+  ));
+  if (d === 0) return [from, to];
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+    const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+    const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+    pts.push([toDeg(Math.atan2(y, x)), toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)))]);
+  }
+  return pts;
+}
+
 export default function MapView({
   missions, selectedMission, statsGsm, statsMetro, selectedVpnTab, popupInfo,
-  filterOptions, mapFilter, filteredMissions, showFlags, showHeatmap,
+  filterOptions, mapFilter, filteredMissions, showFlags, showHeatmap, theme, merkezFW,
   onMarkerClick, onSetPopup, onSetVpnTab, onMapFilterChange,
 }: Props) {
   const activeStats = selectedVpnTab === 'GSM' ? statsGsm : statsMetro;
@@ -112,6 +79,7 @@ export default function MapView({
   const flagImageIds = useRef<string[]>([]);
   const showFlagsRef = useRef(showFlags);
   showFlagsRef.current = showFlags;
+  const mapReadyRef = useRef(false);
 
   // Kıta değişince ülkeleri filtrele
   const availableCountries = useMemo(() => {
@@ -137,56 +105,208 @@ export default function MapView({
     };
   }, [filteredMissions]);
 
+  // 4 hız grubuna göre ayrı GeoJSON kaynakları
+  const SPEED_TIERS = [
+    { id: 'slow',      min: 0,  max: 5,       color: '#ef4444' }, // kırmızı — çok yavaş
+    { id: 'medium',    min: 5,  max: 20,       color: '#f59e0b' }, // amber — yavaş
+    { id: 'good',      min: 20, max: 50,       color: '#22c55e' }, // yeşil — iyi
+    { id: 'excellent', min: 50, max: Infinity, color: '#38bdf8' }, // mavi — mükemmel
+  ] as const;
+
+  const arcByTier = useMemo(() => {
+    const base = filteredMissions
+      .filter(m => Number.isFinite(Number(m.lat)) && Number.isFinite(Number(m.lon)))
+      .map(m => {
+        const speed = Math.max(Number(m.gsm_download) || 0, Number(m.metro_download) || 0);
+        const coords = greatCircleArc(
+          [Number(m.lon), Number(m.lat)],
+          [merkezFW.lon, merkezFW.lat]
+        );
+        return { speed, coords, id: m.id, name: m.name };
+      });
+
+    return SPEED_TIERS.map(tier => ({
+      tier,
+      geojson: {
+        type: 'FeatureCollection',
+        features: base
+          .filter(f => f.speed >= tier.min && f.speed < tier.max)
+          .map(f => ({
+            type: 'Feature',
+            properties: { color: tier.color, speed: f.speed, name: f.name, id: f.id },
+            geometry: { type: 'LineString', coordinates: f.coords },
+          })),
+      },
+    }));
+  }, [filteredMissions, merkezFW]);
+
+  // arc-dot kaynakları için stabil boş GeoJSON referansı
+  // (her render'da yeni obje oluşursa react-map-gl setData çağırır ve animasyon sıfırlanır)
+  const emptyGeoJSON = useMemo(() => ({ type: 'FeatureCollection', features: [] } as any), []);
+
+  const rafRef = useRef<number | null>(null);
+
+  // Arc koordinatlarını rAF döngüsü için ref'te sakla (closure sorunundan kaçınmak için)
+  const arcCoordsRef = useRef<Record<string, Array<[number, number][]>>>({});
+  useEffect(() => {
+    const coords: Record<string, Array<[number, number][]>> = {};
+    arcByTier.forEach(({ tier, geojson }) => {
+      coords[tier.id] = geojson.features.map(
+        f => (f as any).geometry.coordinates as [number, number][]
+      );
+    });
+    arcCoordsRef.current = coords;
+  }, [arcByTier]);
+
+  useEffect(() => {
+    // GeoJSON segment yaklaşımı — zoom bağımsız animasyon.
+    // Her arc kendi koordinatından türetilen SABİT bir faz ofseti alır (stagger).
+    // Böylece aynı hız grubundaki arclar birbirinden bağımsız, kademeli hareket eder.
+    const TAIL = 12; // parlak kuyruk uzunluğu (koordinat sayısı)
+
+    // cyclePeriod: misyon→merkezFW arasında tek tur süresi (ms)
+    // İnsan gözünün rahatça takip edebileceği hızlar:
+    //   slow      → ağır, labored (4s)
+    //   medium    → sabit akış   (2.5s)
+    //   good      → hızlı akış   (1.5s)
+    //   excellent → çok hızlı    (0.8s)
+    const tiers = [
+      { id: 'slow',      cyclePeriod: 4000 },
+      { id: 'medium',    cyclePeriod: 2500 },
+      { id: 'good',      cyclePeriod: 1500 },
+      { id: 'excellent', cyclePeriod:  800 },
+    ];
+
+    const animate = () => {
+      const map = mapRef.current?.getMap();
+      if (!map) { rafRef.current = requestAnimationFrame(animate); return; }
+
+      const now = Date.now();
+      tiers.forEach(({ id, cyclePeriod }) => {
+        const arcs = arcCoordsRef.current[id] || [];
+        const features: object[] = [];
+
+        arcs.forEach(coords => {
+          const n = coords.length;
+          if (n < 2) return;
+
+          // Her arc'ın başlangıç koordinatından türetilen sabit faz ofseti.
+          // Bu sayede aynı gruptaki arclar birbirinden bağımsız kademeli ilerler.
+          const lon0 = coords[0][0];
+          const lat0 = coords[0][1];
+          const phaseOffset = ((lon0 * 137.508 + lat0 * 97.333) % cyclePeriod + cyclePeriod) % cyclePeriod;
+
+          const phaseFrac = ((now + phaseOffset) % cyclePeriod) / cyclePeriod;
+          const headIdx = Math.floor(phaseFrac * (n + TAIL));
+          const segEnd   = Math.min(headIdx, n - 1);
+          const segStart = Math.max(0, headIdx - TAIL);
+          if (segStart >= segEnd) return;
+
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords.slice(segStart, segEnd + 1) },
+            properties: {},
+          });
+        });
+
+        try {
+          const src = map.getSource(`arc-dot-src-${id}`) as any;
+          if (src?.setData) src.setData({ type: 'FeatureCollection', features });
+        } catch { /* source henüz hazır değil */ }
+      });
+
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, []);
+
   const handleContinentChange = (continent: string) => {
     onMapFilterChange({ continent, country: '' });
   };
 
   // Dünya ülkesi bayrak overlay — sadece 1 kez yüklenir
-  const loadWorldFlags = useCallback(async () => {
-    const map = mapRef.current?.getMap();
-    if (!map || !map.isStyleLoaded() || worldFlagsLoaded.current) return;
-    if (!showFlagsRef.current) return; // showFlags kapalıysa yükleme yapma
-    worldFlagsLoaded.current = true;
-
+  // Bayrak layer'larını gerçekten oluşturan iç fonksiyon (map instance parametre olarak alınır)
+  const doLoadFlags = useCallback(async (map: any) => {
     try {
-      // Artık lokal public/countries.geojson dosyamızdan okuyoruz (Çok daha hızlı First Paint)
+      console.info('[WorldFlags] GeoJSON yükleniyor...');
       const res = await fetch('/countries.geojson');
+      if (!res.ok) throw new Error(`GeoJSON fetch failed: ${res.status}`);
       const geojson = await res.json();
 
-      if (!map.getSource('world-countries')) {
-        map.addSource('world-countries', { type: 'geojson', data: geojson });
+      // Stil yüklemesi devam ediyorken de data eklenebilir. Olası hata try-catch ile yakalanır.
+      if (!map.isStyleLoaded()) {
+        console.warn('[WorldFlags] Stil fetch sonrası hâlâ işleniyor, katmanlar eklenmeye zorlanıyor...');
       }
 
-      const featuresList = geojson.features
-        .map((f: { properties: Record<string, any>, geometry: any }) => {
-          const iso2 = (f.properties?.iso_a2 || f.properties?.ISO_A2 || '').toLowerCase();
-          return { iso2, properties: f.properties, geometry: f.geometry };
-        })
-        .filter((f: any) => f.iso2 && f.iso2 !== '-99' && f.iso2.length === 2 && f.geometry);
-
-      // Her ülke için tek bir merkez bul (Natural Earth LABEL_X/LABEL_Y görsel merkezini kullan)
-      const uniqueCenters: { iso2: string, center: [number, number] }[] = [];
-      const seenIso = new Set<string>();
-      
-      for (const f of featuresList) {
-        if (!seenIso.has(f.iso2)) {
-          seenIso.add(f.iso2);
-          
-          let cx: number, cy: number;
-          if (f.properties?.LABEL_X != null && f.properties?.LABEL_Y != null) {
-            cx = Number(f.properties.LABEL_X);
-            cy = Number(f.properties.LABEL_Y);
-          } else {
-            const [minLon, minLat, maxLon, maxLat] = getBbox(f.geometry);
-            cx = (minLon + maxLon) / 2;
-            cy = (minLat + maxLat) / 2;
+      const ISO_PROPS = [
+        'iso_a2', 'ISO_A2', 'iso2', 'ISO2', 'cca2', 'CCA2',
+        'a2_code', 'ISO_A2_EH', 'iso_3166_1_alpha_2',
+      ];
+      const getIso2 = (props: Record<string, any>, featureId?: any): string => {
+        for (const key of ISO_PROPS) {
+          const v = props?.[key];
+          if (v && typeof v === 'string' && v.length === 2 && v !== '-1' && v !== '-99') {
+            return v.toLowerCase();
           }
-
-          uniqueCenters.push({
-            iso2: f.iso2,
-            center: [cx, cy],
-          });
         }
+        if (featureId && typeof featureId === 'string' && featureId.length === 2) {
+          return featureId.toLowerCase();
+        }
+        return '';
+      };
+
+      // Orijinal GeoJSON poligonlarına data-driven pattern boyama için map_iso2 özelliği yediriliyor
+      const enrichedGeojson = { ...geojson };
+      if (enrichedGeojson.features && Array.isArray(enrichedGeojson.features)) {
+        enrichedGeojson.features.forEach((f: any) => {
+          if (!f.properties) f.properties = {};
+          f.properties.map_iso2 = getIso2(f.properties, f.id);
+        });
+      }
+
+      if (!map.getSource('world-countries')) {
+        map.addSource('world-countries', { type: 'geojson', data: enrichedGeojson });
+      }
+
+      const featuresList = (geojson.features as any[])
+        .filter((f: any) => f.geometry)
+        .map((f: any) => ({
+          iso2: getIso2(f.properties || {}, f.id),
+          properties: f.properties || {},
+          geometry: f.geometry,
+        }))
+        .filter((f: any) => f.iso2.length === 2);
+
+      if (featuresList.length > 0) {
+        console.info('[WorldFlags] ISO2 tespiti başarılı, örnek:', featuresList[0].iso2,
+          '| Toplam:', featuresList.length, 'ülke');
+      }
+
+      if (featuresList.length === 0) {
+        const sampleProps = Object.keys((geojson.features?.[0]?.properties) || {}).slice(0, 12);
+        console.warn('[WorldFlags] ISO2 kodu bulunamadı. Props:', sampleProps.join(', '));
+        return;
+      }
+
+      // Her ülke için görsel merkez hesapla
+      const uniqueCenters: { iso2: string; center: [number, number] }[] = [];
+      const seenIso = new Set<string>();
+      for (const f of featuresList) {
+        if (!f.iso2 || f.iso2.length !== 2) continue; // Boş veya anlamsız ISO kodlarını zorla atla
+        if (seenIso.has(f.iso2)) continue;
+        seenIso.add(f.iso2);
+        let cx: number, cy: number;
+        if (f.properties?.LABEL_X != null && f.properties?.LABEL_Y != null) {
+          cx = Number(f.properties.LABEL_X);
+          cy = Number(f.properties.LABEL_Y);
+        } else {
+          const [minLon, minLat, maxLon, maxLat] = getBbox(f.geometry);
+          cx = (minLon + maxLon) / 2;
+          cy = (minLat + maxLat) / 2;
+        }
+        uniqueCenters.push({ iso2: f.iso2, center: [cx, cy] });
       }
 
       const centersGeojson: any = {
@@ -202,73 +322,93 @@ export default function MapView({
         map.addSource('world-country-centers', { type: 'geojson', data: centersGeojson });
       }
 
-      const uniqueIsoCodes = uniqueCenters.map(c => c.iso2);
+      // Bayrak görsellerini lazy yükle
+      const onImageMissing = async (e: any) => {
+        const id: string = e.id ?? e;
+        if (!id.startsWith('fp-')) return;
+        
+        const iso2 = id.slice(3);
+        if (!iso2 || iso2.length !== 2) return; // Boş URL oluşturmayı güvenli şekilde önler
+        
+        try {
+          const img = await map.loadImage(`https://flagcdn.com/w640/${iso2}.png`);
+          if (img?.data && !map.hasImage(id)) {
+            map.addImage(id, img.data);
+            flagImageIds.current.push(id);
+          }
+        } catch { /* bayrak yüklenemedi, sessizce atla */ }
+      };
+      map.on('styleimagemissing', onImageMissing);
 
-      // Yazıların (label) bayrakların üstünde kalması için ilk symbol katmanını bul
-      const layers = map.getStyle().layers;
-      const firstSymbolId = layers?.find(l => l.type === 'symbol')?.id;
+      const styleLayers = map.getStyle().layers;
+      const firstSymbolId = styleLayers?.find((l: any) => l.type === 'symbol')?.id;
 
-      const loadBatch = (batch: string[]) =>
-        Promise.all(
-          batch.map(iso2 => (async () => {
-            const patternId = `fp-${iso2}`;
-            const fillLayerId = `fl-fill-${iso2}`;
-            const lineLayerId = `fl-line-${iso2}`;
-            
-            if (map.getLayer(fillLayerId)) return;
-            const isoUpper = iso2.toUpperCase();
-            try {
-              // Büyük bayrak kullanıyoruz ki fill-pattern "tile" ları çok küçük durmasın
-              const img = await map.loadImage(`https://flagcdn.com/w640/${iso2}.png`);
-              if (!img?.data) return;
-              if (!map.hasImage(patternId)) map.addImage(patternId, img.data);
-              
-              const filterDef = ['==', ['upcase', ['get', 'iso_a2']], isoUpper] as any;
-              
-              if (!map.getLayer(fillLayerId)) {
-                map.addLayer({
-                  id: fillLayerId,
-                  type: 'fill',
-                  source: 'world-countries', // Polygon olan ana source'a dönüyoruz
-                  filter: filterDef,
-                  paint: {
-                    'fill-pattern': patternId,
-                    'fill-opacity': 0.18, // 0.12'den 0.18'e çıkarttık, biraz daha net olsun
-                  },
-                }, firstSymbolId);
-                flagLayerIds.current.push(fillLayerId);
-              }
-              
-              // Ülke sınır çizgisi (fill-pattern'in dışını netleştirmek için)
-              if (!map.getLayer(lineLayerId)) {
-                map.addLayer({
-                  id: lineLayerId,
-                  type: 'line',
-                  source: 'world-countries',
-                  filter: filterDef,
-                  paint: {
-                    'line-color': '#38bdf8',
-                    'line-opacity': 0.40,
-                    'line-width': 1.5,
-                  },
-                }, firstSymbolId);
-                flagLayerIds.current.push(lineLayerId);
-              }
-
-              flagImageIds.current.push(patternId);
-            } catch { /* ülke atla */ }
-          })())
-        );
-
-      const BATCH = 15;
-      for (let i = 0; i < uniqueIsoCodes.length; i += BATCH) {
-        await loadBatch(uniqueIsoCodes.slice(i, i + BATCH));
-        if (i + BATCH < uniqueIsoCodes.length) await new Promise(r => setTimeout(r, 80));
+      if (!map.getLayer('fl-borders-all')) {
+        map.addLayer({
+          id: 'fl-borders-all',
+          type: 'line',
+          source: 'world-countries',
+          paint: {
+            'line-color': '#38bdf8',
+            'line-opacity': 0.30,
+            'line-width': 1.0,
+          },
+        }, firstSymbolId);
+        flagLayerIds.current.push('fl-borders-all');
       }
+
+      // TEK bayrak kaplama (fill) layer — poligon sınırlarına clipping (kırpma) sağlar
+      if (!map.getLayer('fl-fills-all')) {
+        map.addLayer({
+          id: 'fl-fills-all',
+          type: 'fill',
+          source: 'world-countries',
+          paint: { 
+            // Harita üzerindeki country border'ın (polygon) içini flag resmi ile mozaik boyar
+            'fill-pattern': ['concat', 'fp-', ['get', 'map_iso2']] as any,
+            // Daha şeffaf (watermark) bir görünüm, mozaik etkisini yumuşatır:
+            'fill-opacity': 0.20
+          },
+        }, firstSymbolId);
+        flagLayerIds.current.push('fl-fills-all');
+      }
+
+      worldFlagsLoaded.current = true;
+      console.info('[WorldFlags] ✅ Bayraklar başarıyla yüklendi.',
+        uniqueCenters.length, 'ülke,', flagLayerIds.current.length, 'layer');
     } catch (e) {
-      console.warn('[WorldFlags] Yüklenemedi:', e);
+      worldFlagsLoaded.current = false;
+      console.warn('[WorldFlags] ❌ Yüklenemedi:', e);
     }
   }, []);
+
+  // loadWorldFlags: stil hazır mı kontrol et, hazırsa doLoadFlags çağır
+  const loadWorldFlags = useCallback(() => {
+    console.warn('[WorldFlags-DEBUG] loadWorldFlags fonksiyonuna girildi!');
+    const map = mapRef.current?.getMap();
+    console.warn(`[WorldFlags-DEBUG] Durum -> Map Var Mı: ${!!map}, Yüklendi Mi: ${worldFlagsLoaded.current}, showFlagsRef: ${showFlagsRef.current}`);
+
+    if (!map || worldFlagsLoaded.current) return;
+    if (!showFlagsRef.current) return;
+
+    if (map.isStyleLoaded()) {
+      doLoadFlags(map);
+    } else {
+      console.info('[WorldFlags] Stil henüz yüklenmedi, bekleniyor...');
+      let retryCount = 0;
+      const timer = setInterval(() => {
+        retryCount++;
+        if (map.isStyleLoaded()) {
+          clearInterval(timer);
+          console.info('[WorldFlags] Stil hazır, bayraklar yükleniyor...');
+          doLoadFlags(map);
+        } else if (retryCount >= 30) {
+          clearInterval(timer);
+          console.warn('[WorldFlags] Stil 9sn içinde yüklenemedi');
+        }
+      }, 300);
+    }
+  }, [doLoadFlags]);
 
   // showFlags değişince katmanları göster/gizle
   useEffect(() => {
@@ -281,11 +421,30 @@ export default function MapView({
     });
   }, [showFlags]);
 
+  // Garantili Map Initialization mekanizması (Sürekli Polling)
   useEffect(() => {
+    console.warn('[WorldFlags-DEBUG] Garantili başlatıcı devrede (Polling)...');
+    const initTimer = setInterval(() => {
+      const map = mapRef.current?.getMap();
+      if (!map) return;
+
+      if (map.isStyleLoaded()) {
+        clearInterval(initTimer);
+        console.warn('[WorldFlags-DEBUG] Harita ve stil tamamen yüklendi! Bayrak yüklemesine geçiliyor.');
+        mapReadyRef.current = true;
+        loadWorldFlags();
+      }
+    }, 300);
+
+    return () => clearInterval(initTimer);
+  }, [loadWorldFlags]);
+
+  // showFlags prop güncellemeleri için
+  useEffect(() => {
+    console.warn(`[WorldFlags-DEBUG] showFlags (${showFlags}) effect state değişikliği`);
     const map = mapRef.current?.getMap();
     if (!map) return;
     if (!showFlags) {
-      // Bayraklar kapalıyken layer eklenmesin; zaten eklenmiş olanları gizle
       flagLayerIds.current.forEach(id => {
         if (map.isStyleLoaded() && map.getLayer(id)) {
           map.setLayoutProperty(id, 'visibility', 'none');
@@ -294,16 +453,26 @@ export default function MapView({
       return;
     }
     // showFlags=true: bayrak henüz yüklenmemişse yükle
-    if (worldFlagsLoaded.current) return;
-    if (map.isStyleLoaded()) loadWorldFlags();
-    else map.once('load', loadWorldFlags);
+    if (worldFlagsLoaded.current) {
+      // Zaten yüklü, görünürlüğü aç
+      if (map.isStyleLoaded()) {
+        flagLayerIds.current.forEach(id => {
+          if (map.getLayer(id)) {
+            map.setLayoutProperty(id, 'visibility', 'visible');
+          }
+        });
+      }
+      return;
+    }
+    // Henüz yüklenmemiş — şimdi yükle
+    loadWorldFlags();
   }, [loadWorldFlags, showFlags]);
 
   return (
     <>
       {/* Left Panel */}
-      <div style={{ width: '420px', display: 'flex', flexDirection: 'column', background: 'var(--bg-surface)', borderRight: '1px solid var(--border)', overflowY: 'auto', flexShrink: 0 }}>
-        <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border)' }}>
+      <div className="glass-panel" style={{ width: '420px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', overflowY: 'auto', flexShrink: 0, zIndex: 10 }}>
+        <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
             <MapPin size={18} color="var(--accent)"/>
             <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Misyon Ağ Durumu</h2>
@@ -446,12 +615,113 @@ export default function MapView({
         <Map
           ref={mapRef}
           initialViewState={{ longitude: 35, latitude: 25, zoom: 2 }}
-          mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-          onLoad={loadWorldFlags}
+          mapStyle={theme === 'light' 
+            ? "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+            : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"}
         >
           <NavigationControl position="top-right"/>
           
-          {/* Heatmap Layer */}
+          {/* ── Arc Lines: sabit arka plan çizgisi ── */}
+          {arcByTier.map(({ tier, geojson }) => (
+            <Source key={tier.id} id={`arc-src-${tier.id}`} type="geojson" data={geojson as any}>
+              {/* Gölge / halo */}
+              <Layer
+                id={`arc-shadow-${tier.id}`}
+                type="line"
+                paint={{
+                  'line-color': tier.color,
+                  'line-width': 1.2,
+                  'line-opacity': selectedMission 
+                    ? ['case', ['==', ['get', 'id'], selectedMission.id], 0.7, 0.05]
+                    : (tier.id === 'slow' ? 0.60 : tier.id === 'medium' ? 0.35 : 0.1),
+                  'line-blur': 5,
+                }}
+              />
+              {/* Arka plan sabit kesikli çizgi */}
+              <Layer
+                id={`arc-base-${tier.id}`}
+                type="line"
+                paint={{
+                  'line-color': tier.color,
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.6, 4, 1.0, 7, 1.5],
+                  'line-opacity': selectedMission 
+                    ? ['case', ['==', ['get', 'id'], selectedMission.id], 0.9, 0.1]
+                    : (tier.id === 'slow' ? 0.75 : tier.id === 'medium' ? 0.55 : 0.3),
+                  'line-dasharray': [2, 5],
+                }}
+              />
+            </Source>
+          ))}
+          {/* ── Akan parlak dot — GeoJSON segment (zoom BAĞIMSIZ) ── */}
+          {/* dasharray yerine gerçek koordinat segmenti: zoom'da asla bozulmaz */}
+          {arcByTier.map(({ tier }) => (
+            <Source
+              key={`dot-${tier.id}`}
+              id={`arc-dot-src-${tier.id}`}
+              type="geojson"
+              data={emptyGeoJSON}
+            >
+              <Layer
+                id={`arc-dot-${tier.id}`}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                paint={{
+                  'line-color': tier.color,
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 1, 2, 4, 3.5, 7, 5],
+                  'line-opacity': selectedMission ? 0 : (tier.id === 'slow' ? 1.0 : tier.id === 'medium' ? 0.8 : 0.4),
+                  'line-blur': 0.4,
+                }}
+              />
+            </Source>
+          ))}
+
+          {/* ── Merkez FW Pulsing Marker ── */}
+          {/* anchor="center": 44×44 container'ın merkezi koordinata denk gelir.
+              Ping halkalar container içinde kalır — taşma ile anchor kayması önlenir. */}
+          <Marker longitude={merkezFW.lon} latitude={merkezFW.lat} anchor="center">
+            <div style={{ position: 'relative', width: '44px', height: '44px', cursor: 'default' }} title={merkezFW.name}>
+              {/* Ping halkası — container içinde tanımlı koordinatlarda */}
+              <div style={{
+                position: 'absolute', inset: '1px',
+                borderRadius: '50%',
+                border: '2px solid #38bdf8',
+                animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite',
+                opacity: 0.6,
+                pointerEvents: 'none',
+              }}/>
+              <div style={{
+                position: 'absolute', inset: '6px',
+                borderRadius: '50%',
+                border: '1px solid #38bdf8',
+                animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite 0.5s',
+                opacity: 0.4,
+                pointerEvents: 'none',
+              }}/>
+              {/* Merkez nokta — container'ın tam ortasında */}
+              <div style={{
+                position: 'absolute', top: '11px', left: '11px',
+                width: '22px', height: '22px',
+                background: 'linear-gradient(135deg, #0ea5e9, #1d4ed8)',
+                borderRadius: '50%',
+                border: '2px solid white',
+                boxShadow: '0 0 16px #38bdf8, 0 0 32px rgba(56,189,248,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <ShieldCheck size={11} color="white" strokeWidth={2.5}/>
+              </div>
+              {/* Etiket */}
+              <div style={{
+                position: 'absolute', top: '48px', left: '50%', transform: 'translateX(-50%)',
+                background: 'rgba(6,11,23,0.85)', backdropFilter: 'blur(8px)',
+                color: '#38bdf8', fontSize: '0.6rem', fontWeight: 700,
+                padding: '2px 7px', borderRadius: '4px',
+                whiteSpace: 'nowrap', border: '1px solid rgba(56,189,248,0.3)',
+                pointerEvents: 'none',
+              }}>{merkezFW.name}</div>
+            </div>
+          </Marker>
+
+          {/* ── Heatmap Layer ── */}
           {showHeatmap && (
             <Source id="heatmap-source" type="geojson" data={heatmapData as any}>
               <Layer
@@ -481,17 +751,21 @@ export default function MapView({
             const selected = selectedMission?.id === m.id;
             return (
               <Marker key={m.id} longitude={Number(m.lon)} latitude={Number(m.lat)}
-                onClick={e => { e.originalEvent.stopPropagation(); onMarkerClick(m); }}>
+                anchor="center"
+                onClick={e => { e.originalEvent.stopPropagation(); onMarkerClick(m); }}
+                style={{ zIndex: selected ? 10 : 1 }}
+              >
                 <div style={{
-                  width: selected ? '18px' : '13px',
-                  height: selected ? '18px' : '13px',
+                  width: selected ? '20px' : '12px',
+                  height: selected ? '20px' : '12px',
                   background: color,
                   borderRadius: '50%',
-                  border: selected ? '3px solid var(--accent)' : '2px solid rgba(255,255,255,0.6)',
+                  border: selected ? '3px solid white' : '2px solid rgba(255,255,255,0.8)',
                   cursor: 'pointer',
-                  boxShadow: selected ? `0 0 12px ${color}` : `0 0 6px ${color}88`,
-                  transition: 'all 0.2s',
-                }}/>
+                  boxShadow: selected ? `0 0 16px ${color}, 0 0 32px ${color}` : `0 0 6px ${color}66`,
+                  transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+                  opacity: selected ? 1 : (selectedMission ? 0.3 : 0.9), // Tüm noktalar daha görünür (anlaşılır)
+                }} className={!selected && (color === '#ef4444' || color === '#f59e0b') && !selectedMission ? 'marker-pulse' : ''}/>
               </Marker>
             );
           })}

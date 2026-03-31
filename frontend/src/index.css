@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -110,13 +110,19 @@ html, body { height: 100%; font-family: 'Inter', system-ui, sans-serif; backgrou
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
 
-/* Glassmorphism Cards */
+/* Glassmorphism Cards & Panels */
 .glass-card {
   background: var(--glass-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right: 1px solid var(--border);
 }
 .glass-card-hover:hover {
   border-color: var(--accent-glow);
@@ -367,7 +373,9 @@ select.form-control { cursor: pointer; }
 
 /* Popup style overrides */
 .maplibregl-popup-content {
-  background: var(--bg-card) !important;
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
   border-radius: var(--radius) !important;
   border: 1px solid var(--border) !important;
   box-shadow: var(--shadow-lg) !important;
@@ -379,6 +387,24 @@ select.form-control { cursor: pointer; }
   color: var(--text-secondary) !important;
   font-size: 16px !important;
   padding: 4px 8px !important;
+  transition: var(--transition);
 }
-.maplibregl-popup-tip { border-top-color: var(--bg-card) !important; }
+.maplibregl-popup-close-button:hover {
+  background: var(--red-dim) !important;
+  color: var(--red) !important;
+}
+.maplibregl-popup-tip { border-top-color: var(--glass-bg) !important; }
+
+/* Merkez FW ping animasyonu */
+@keyframes ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+/* Mission marker pulse */
+@keyframes mission-pulse {
+  0%, 100% { box-shadow: 0 0 6px currentColor; }
+  50% { box-shadow: 0 0 14px currentColor, 0 0 28px currentColor; }
+}
+.marker-pulse { animation: mission-pulse 2.5s ease-in-out infinite; }
+
 

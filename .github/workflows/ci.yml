@@ -76,6 +76,9 @@ jobs:
       - name: Install frontend dependencies
         run: cd frontend && npm ci
 
+      - name: Run smoke tests (route registry + response contracts)
+        run: npm run test:smoke
+
       - name: Run utility tests
         run: npm run test:utils
 
@@ -83,7 +86,6 @@ jobs:
         run: cd backend && npm run test:coverage
 
       - name: Run frontend tests with coverage
-        continue-on-error: true
         run: cd frontend && npm run test:coverage
 
       - name: Upload backend coverage

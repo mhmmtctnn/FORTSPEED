@@ -22,6 +22,7 @@ interface AppSettings {
   showFlags: boolean;
   showHeatmap: boolean;
   theme?: 'dark' | 'light';
+  merkezFW?: { lat: number; lon: number; name: string };
 }
 
 const NAV = [
@@ -48,8 +49,9 @@ function AppContent() {
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     try {
       const s = localStorage.getItem('speedtest_settings');
-      return s ? JSON.parse(s) : { showFlags: true, showHeatmap: false, theme: 'dark' };
-    } catch { return { showFlags: true, showHeatmap: false, theme: 'dark' }; }
+      const parsed = s ? JSON.parse(s) : null;
+      return parsed ?? { showFlags: true, showHeatmap: false, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } };
+    } catch { return { showFlags: true, showHeatmap: false, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } }; }
   });
 
   useEffect(() => {
@@ -169,8 +171,15 @@ function AppContent() {
     } catch {}
   };
 
+  // MERKEZ_FW misyonu özel pulsing marker olarak gösterilir, normal pin listesinden çıkarılır
+  const merkezFWMission = useMemo(() =>
+    missions.find(m => m.name === 'MERKEZ_FW'),
+    [missions]
+  );
+
   const filteredMissions = useMemo(() =>
     missions.filter(m => {
+      if (m.name === 'MERKEZ_FW') return false; // özel marker olarak ayrıca gösterilir
       if (!Number.isFinite(Number(m.lat)) || !Number.isFinite(Number(m.lon))) return false;
       if (mapFilter.continent && m.continent !== mapFilter.continent) return false;
       if (mapFilter.country && m.country !== mapFilter.country) return false;
@@ -233,6 +242,12 @@ function AppContent() {
             mapFilter={mapFilter}
             showFlags={appSettings.showFlags}
             showHeatmap={appSettings.showHeatmap}
+            theme={appSettings.theme || 'dark'}
+            merkezFW={
+              merkezFWMission
+                ? { lat: Number(merkezFWMission.lat), lon: Number(merkezFWMission.lon), name: 'MERKEZ FW' }
+                : (appSettings.merkezFW ?? { lat: 39.93, lon: 32.86, name: 'Merkez FW' })
+            }
             onMarkerClick={onMarkerClick}
             onSetPopup={setPopupInfo}
             onSetVpnTab={setSelectedVpnTab}

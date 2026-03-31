@@ -74,32 +74,104 @@ interface Props {
   onApply: () => void;
 }
 
+const HEADER_MAP: Record<string, string> = {
+  mission_name: 'Misyon Adi', country: 'Ulke', continent: 'Kita', type: 'Tur',
+  total_tests: 'Toplam Test', avg_download: 'Ort. Indirme (Mbps)', avg_upload: 'Ort. Yukleme (Mbps)',
+  avg_latency: 'Ort. Gecikme (ms)', max_download: 'Maks. Indirme (Mbps)', min_download: 'Min. Indirme (Mbps)',
+  max_upload: 'Maks. Yukleme (Mbps)', min_upload: 'Min. Yukleme (Mbps)', last_test_time: 'Son Test',
+  total_missions: 'Toplam Misyon', total_countries: 'Toplam Ulke', vpn_type: 'Hat Tipi',
+  city: 'Sehir', DeviceName: 'Cihaz Adi', CityName: 'Misyon Adi', Country: 'Ulke', Continent: 'Kita',
+  VpnTypeName: 'Hat Tipi', DownloadSpeed: 'Indirme (Mbps)', UploadSpeed: 'Yukleme (Mbps)',
+  Latency: 'Gecikme (ms)', MeasuredAt: 'Test Zamani'
+};
+const mapHeader = (k: string) => HEADER_MAP[k] || k;
+
 function exportCsv(data: Record<string, unknown>[], filename: string) {
   if (!data.length) return;
   const keys = Object.keys(data[0]);
-  const rows = [keys.join(','), ...data.map(r => keys.map(k => JSON.stringify(r[k] ?? '')).join(','))];
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  const mappedKeys = keys.map(mapHeader);
+  // Excel Türkçe bölge ayracı olan noktalı virgül (;) kullanıyoruz ve utf-8 BOM ekliyoruz
+  const rows = [mappedKeys.join(';'), ...data.map(r => keys.map(k => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(';'))];
+  const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; 
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-async function exportPdf(data: Record<string, unknown>[], filename: string) {
-  if (!data.length) return;
+async function exportPdf(data: Record<string, unknown>[], filename: string, elementId?: string) {
+  if (!data.length && !elementId) return;
   const { jsPDF } = await import('jspdf');
-  const { default: autoTable } = await import('jspdf-autotable');
-  const doc = new jsPDF({ orientation: 'landscape' });
-  doc.setFontSize(14);
-  doc.text('FORTSPEED - Ağ Raporu', 14, 15);
-  doc.setFontSize(9);
-  doc.text(`Oluşturulma: ${new Date().toLocaleString('tr-TR')}`, 14, 22);
-  const keys = Object.keys(data[0]);
-  autoTable(doc, {
-    head: [keys],
-    body: data.map(r => keys.map(k => String(r[k] ?? ''))),
-    startY: 28,
-    styles: { fontSize: 7, cellPadding: 2 },
-    headStyles: { fillColor: [56, 189, 248], textColor: 0, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [240, 248, 255] },
-  });
+  let autoTable: any;
+  if (data.length > 0) {
+    autoTable = (await import('jspdf-autotable')).default;
+  }
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  
+  doc.setFontSize(16);
+  doc.setTextColor(56, 189, 248);
+  doc.text('FORTSPEED - Gecmis Ag Performans Raporu', 14, 15);
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Tarih: ${new Date().toLocaleString('tr-TR')}`, 14, 22);
+
+  let startY = 30;
+
+  if (elementId) {
+    const el = document.getElementById(elementId);
+    if (el) {
+      const html2canvas = (await import('html2canvas')).default;
+      const originalMaxH = el.style.maxHeight;
+      const originalOverflow = el.style.overflow;
+      el.style.maxHeight = 'none';
+      el.style.overflow = 'visible';
+      
+      try {
+        const themeBg = document.documentElement.getAttribute('data-theme') === 'light' ? '#f0f4f8' : '#060b17';
+        const canvas = await html2canvas(el, { backgroundColor: themeBg, scale: 1.5, useCORS: true });
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const pdfW = doc.internal.pageSize.getWidth();
+        
+        const margin = 14;
+        const imgW = pdfW - (margin * 2);
+        let imgH = (canvas.height * imgW) / canvas.width;
+        
+        if (imgH > 150) {
+           doc.addImage(imgData, 'JPEG', margin, startY, imgW, 150);
+           startY += 155;
+        } else {
+           doc.addImage(imgData, 'JPEG', margin, startY, imgW, imgH);
+           startY += imgH + 5;
+        }
+        
+        if (startY > doc.internal.pageSize.getHeight() - 40) {
+           doc.addPage();
+           startY = 15;
+        }
+      } catch (e) {
+        console.error("PDF Screenshot failed:", e);
+      } finally {
+        el.style.maxHeight = originalMaxH; el.style.overflow = originalOverflow;
+      }
+    }
+  }
+
+  if (data.length > 0) {
+    const keys = Object.keys(data[0]);
+    const mappedKeys = keys.map(mapHeader);
+    autoTable(doc, {
+      head: [mappedKeys],
+      body: data.map((r: any) => keys.map(k => {
+        const val = r[k];
+        if (val instanceof Date) return val.toLocaleString('tr-TR');
+        if (typeof val === 'number') return Number(val).toFixed(2);
+        return String(val ?? '');
+      })),
+      startY: startY,
+      styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+      headStyles: { fillColor: [56, 189, 248], textColor: 0, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [240, 248, 255], textColor: 0 },
+      margin: { top: 15, left: 14, right: 14, bottom: 15 }
+    });
+  }
   doc.save(filename);
 }
 
@@ -107,11 +179,26 @@ async function exportImage(elementId: string, filename: string, type: 'png' | 'j
   const html2canvas = (await import('html2canvas')).default;
   const el = document.getElementById(elementId);
   if (!el) return;
-  const canvas = await html2canvas(el, { backgroundColor: '#0f172a', scale: 2, useCORS: true });
-  const link = document.createElement('a');
-  link.download = filename;
-  link.href = canvas.toDataURL(`image/${type}`, 0.95);
-  link.click();
+  
+  const originalMaxH = el.style.maxHeight;
+  const originalOverflow = el.style.overflow;
+  el.style.maxHeight = 'none';
+  el.style.overflow = 'visible';
+
+  try {
+    const themeBg = document.documentElement.getAttribute('data-theme') === 'light' ? '#f0f4f8' : '#060b17';
+    const canvas = await html2canvas(el, { backgroundColor: themeBg, scale: 2, useCORS: true });
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = canvas.toDataURL(`image/${type}`, 0.95);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (e) {
+    console.error("Image export failed:", e);
+  } finally {
+    el.style.maxHeight = originalMaxH; el.style.overflow = originalOverflow;
+  }
 }
 
 const SparkCell = ({ data, color = "var(--accent)" }: { data?: any[], color?: string }) => {
@@ -409,12 +496,17 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
               >
                 {[
                   { label: '📊 CSV', action: () => {
-                    const data = missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports;
-                    exportCsv(data, `rapor-${filters.reportType}-${Date.now()}.csv`);
+                    const data = filters.reportType === 'summary' ? [] : (missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports);
+                    if (data.length > 0) {
+                      exportCsv(data, `rapor-${filters.reportType}-${Date.now()}.csv`);
+                    } else {
+                      alert('Özet sekmesinde CSV formatı desteklenmemektedir.');
+                    }
                   }},
                   { label: '📄 PDF', action: () => {
-                    const data = missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports;
-                    exportPdf(data, `rapor-${filters.reportType}-${Date.now()}.pdf`);
+                    const data = filters.reportType === 'summary' ? [] : (missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports);
+                    // 'report-content-area' varsa ID olarak pasla ki grafikler tepeye yazılsın
+                    exportPdf(data, `rapor-${filters.reportType}-${Date.now()}.pdf`, 'report-content-area');
                   }},
                   { label: '🖼️ PNG', action: () => exportImage('report-content-area', `rapor-${filters.reportType}-${Date.now()}.png`, 'png') },
                   { label: '📷 JPEG', action: () => exportImage('report-content-area', `rapor-${filters.reportType}-${Date.now()}.jpeg`, 'jpeg') },
@@ -441,7 +533,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
 
         {/* NOC Executive Summary Dashboard */}
         {filters.reportType === 'summary' && (
-          <div className="fade-in">
+          <div className="fade-in" id="report-summary-charts">
             {/* Hızlı Filtre Barı */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', background: 'var(--card-bg)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <div style={{ flex: 1, alignSelf: 'center', fontSize: '1.2rem', fontWeight: 800, color: 'var(--text)' }}>NOC Yönetim Özeti</div>
@@ -480,7 +572,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                    </div>
                    
                    {/* Darboğaz Listesi (Bottlenecks) */}
-                   <div className="glass-card" style={{ padding: '20px', borderTop: '4px solid #f43f5e' }}>
+                   <div className="glass-card" style={{ padding: '20px', borderTop: '4px solid #f43f5e' }} data-html2canvas-ignore="true">
                       <div className="section-title" style={{color: '#f43f5e'}}>🚨 Darboğaz (Asimetrik Hız) Tespitleri</div>
                       <div style={{overflowY: 'auto', maxHeight: '250px'}}>
                         <table className="data-table" style={{ fontSize: '0.8rem' }}>
@@ -546,7 +638,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
         {/* Mission Reports */}
         {filters.reportType === 'missions' && missionReports.length > 0 && (
           <div className="fade-in">
-            <div className="glass-card" style={{ padding: '20px', marginBottom: '16px' }}>
+            <div id="report-summary-charts" className="glass-card" style={{ padding: '20px', marginBottom: '16px' }}>
               <div className="section-title">Misyon Bazlı İndirme/Yükleme (İlk 15)</div>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={missionChartData} barGap={2} barCategoryGap="25%">
@@ -560,7 +652,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="glass-card" style={{ overflow: 'hidden' }}>
+            <div className="glass-card" style={{ overflow: 'hidden' }} data-html2canvas-ignore="true">
               <table className="data-table">
                 <thead><tr>
                   <SortTh col="mission_name" label="Misyon"/>
@@ -665,7 +757,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                      </BarChart>
                    </ResponsiveContainer>
                 </div>
-                <div className="glass-card" style={{ overflow: 'hidden' }}>
+                <div className="glass-card" style={{ overflow: 'hidden' }} data-html2canvas-ignore="true">
                   <table className="data-table">
                     <thead><tr>
                       <th>Ülke</th><th>Kıta</th>
@@ -694,7 +786,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                 </div>
               </>
             )}
-            {!filteredCountryReports.length && !countryAnalytics && <div style={{padding: '40px', textAlign:'center', color:'var(--text-muted)'}}>Gösterilecek sonuç bulunamadı.</div>}
+             {!filteredCountryReports.length && !countryAnalytics && <div style={{padding: '40px', textAlign:'center', color:'var(--text-muted)'}}>Gösterilecek sonuç bulunamadı.</div>}
           </div>
         )}
 
@@ -760,7 +852,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="glass-card" style={{ overflow: 'hidden' }}>
+                <div className="glass-card" style={{ overflow: 'hidden' }} data-html2canvas-ignore="true">
                   <table className="data-table">
                     <thead><tr>
                       <th>Kıta</th>
@@ -827,7 +919,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(1,1fr)', gap: '20px' }}>
               {/* GSM Listesi */}
-              <div className="glass-card" style={{ padding: '16px', borderTop: '3px solid #a855f7' }}>
+              <div className="glass-card" style={{ padding: '16px', borderTop: '3px solid #a855f7' }} data-html2canvas-ignore="true">
                 <div style={{ fontWeight: 800, color: '#a855f7', marginBottom: '12px', fontSize: '1rem' }}>📶 GSM Performans Liderleri</div>
                 <div style={{ overflowY: 'auto', maxHeight: showAllVpnMissions ? '600px' : 'none' }}>
                   <table className="data-table" style={{ fontSize: '0.8rem' }}>
@@ -856,7 +948,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
               </div>
 
               {/* Metro Listesi */}
-              <div className="glass-card" style={{ padding: '16px', borderTop: '3px solid #38bdf8' }}>
+              <div className="glass-card" style={{ padding: '16px', borderTop: '3px solid #38bdf8' }} data-html2canvas-ignore="true">
                 <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: '12px', fontSize: '1rem' }}>🌐 Karasal (METRO) Performans Liderleri</div>
                 <div style={{ overflowY: 'auto', maxHeight: showAllVpnMissions ? '600px' : 'none' }}>
                   <table className="data-table" style={{ fontSize: '0.8rem' }}>
@@ -893,7 +985,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
         {filters.reportType === 'all' && reports.length > 0 && (
           <div className="fade-in">
             <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '8px' }}>{reports.length} kayıt</div>
-            <div className="glass-card" style={{ overflow: 'hidden' }}>
+            <div className="glass-card" style={{ overflow: 'hidden' }} data-html2canvas-ignore="true">
               <table className="data-table">
                 <thead><tr>
                   <th>Misyon</th><th>Ülke</th><th>Hat</th>
@@ -937,3 +1029,4 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
     </div>
   );
 }
+

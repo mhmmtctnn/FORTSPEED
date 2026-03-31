@@ -104,19 +104,27 @@ export const useNocSummary = (period: 'daily' | 'weekly' | 'monthly') => {
 export const useCityMutations = () => {
   const queryClient = useQueryClient();
 
+  // Tüm mutasyonlarda ['cities'], ['missions'] ve ['filterOptions'] cache'lerini sıfırla
+  // Böylece harita ve filtre seçenekleri anında güncellenir
+  const invalidateAll = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['cities'] }),
+    queryClient.invalidateQueries({ queryKey: ['missions'] }),
+    queryClient.invalidateQueries({ queryKey: ['filterOptions'] }),
+  ]);
+
   const addCity = useMutation({
     mutationFn: async (c: Partial<CityRow>) => axios.post(`${API_BASE}/cities`, c),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cities'] }),
+    onSuccess: invalidateAll,
   });
 
   const updateCity = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<CityRow> }) => axios.put(`${API_BASE}/cities/${id}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cities'] }),
+    onSuccess: invalidateAll,
   });
 
   const deleteCity = useMutation({
     mutationFn: async (id: number) => axios.delete(`${API_BASE}/cities/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cities'] }),
+    onSuccess: invalidateAll,
   });
 
   return { addCity, updateCity, deleteCity };
