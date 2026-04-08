@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Globe, TrendingUp, Wifi, Activity, Clock, MapPin, Zap, Calendar, X } from 'lucide-react';
 import { Mission, ActivityEntry, fmt, getBestDownload, getBestUpload } from '../types';
 
@@ -66,7 +66,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
     { label: 'Toplam Test', value: Number(summary?.total_tests ?? 0).toLocaleString(), icon: <Activity size={20}/>, color: 'blue', unit: '' },
     { label: 'Ort. İndirme', value: fmt(summary?.global_avg_download), icon: <TrendingUp size={20}/>, color: 'green', unit: 'Mbps' },
     { label: 'Ort. Yükleme', value: fmt(summary?.global_avg_upload), icon: <Zap size={20}/>, color: 'blue', unit: 'Mbps' },
-    { label: 'Ort. Gecikme', value: fmt(summary?.global_avg_latency, 0), icon: <Clock size={20}/>, color: 'amber', unit: 'ms' },
+    { label: 'Ort. Gecikme', value: summary?.global_avg_latency ? fmt(summary.global_avg_latency, 0) : '—', icon: <Clock size={20}/>, color: 'amber', unit: summary?.global_avg_latency ? 'ms' : '' },
   ];
 
   const chartData = continentReports
@@ -79,6 +79,16 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
     ul: Number(Number(r.avg_upload).toFixed(1)),
     latency: Number(Number(r.avg_latency).toFixed(0)),
   }));
+
+  // Radar için 0-100 normalize (aynı ölçek → anlamlı şekil)
+  const maxDl      = Math.max(...vpnChartData.map(v => v.dl), 1);
+  const maxUl      = Math.max(...vpnChartData.map(v => v.ul), 1);
+  const maxLatency = Math.max(...vpnChartData.map(v => v.latency), 1);
+  const vpnRadarData = [
+    { metric: 'İndirme',  ...Object.fromEntries(vpnChartData.map(v => [v.name, Math.round((v.dl / maxDl) * 100)])) },
+    { metric: 'Yükleme',  ...Object.fromEntries(vpnChartData.map(v => [v.name, Math.round((v.ul / maxUl) * 100)])) },
+    { metric: 'Gecikme',  ...Object.fromEntries(vpnChartData.map(v => [v.name, v.latency > 0 ? Math.round((1 - v.latency / maxLatency) * 100) : null])) },
+  ].filter(d => Object.values(d).some(val => val !== null && typeof val === 'number'));
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px', background: 'var(--bg-base)' }} className="fade-in">
@@ -113,7 +123,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
               {/* Basit bir CSS marquee mantığı - Ticker */}
               <div style={{
                 display: 'inline-block',
-                animation: 'marquee 30s linear infinite',
+                animation: 'marquee 80s linear infinite',
                 fontSize: '0.8rem',
                 color: 'var(--text-muted)'
               }}>
@@ -234,30 +244,70 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
           {vpnChartData.length === 0 ? (
             <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Veri yok</div>
           ) : (
-            <>
-              <ResponsiveContainer width="100%" height={180}>
-                <RadarChart data={[
-                  { metric: 'İndirme', ...Object.fromEntries(vpnChartData.map(v => [v.name, v.dl])) },
-                  { metric: 'Yükleme', ...Object.fromEntries(vpnChartData.map(v => [v.name, v.ul])) },
-                  { metric: 'Gecikme', ...Object.fromEntries(vpnChartData.map(v => [v.name, 100 - Math.min(v.latency, 99)])) },
-                ]}>
-                  <PolarGrid stroke="var(--border)"/>
-                  <PolarAngleAxis dataKey="metric" tick={{ fill: 'var(--text-muted)', fontSize: 10 }}/>
-                  {vpnChartData.map((v, i) => (
-                    <Radar key={v.name} name={v.name} dataKey={v.name} stroke={i === 0 ? '#a855f7' : '#38bdf8'} fill={i === 0 ? '#a855f7' : '#38bdf8'} fillOpacity={0.15} strokeWidth={2}/>
-                  ))}
-                  <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 11 }}/>
-                </RadarChart>
-              </ResponsiveContainer>
-              <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '8px' }}>
+              {/* Metrik satırları — her metrik için iki hat yan yana */}
+              {[
+                { key: 'dl', label: 'İndirme', unit: 'Mbps', color: '#22c55e', icon: '↓' },
+                { key: 'ul', label: 'Yükleme', unit: 'Mbps', color: '#38bdf8', icon: '↑' },
+                ...(vpnChartData.some(v => v.latency > 0) ? [{ key: 'latency', label: 'Gecikme', unit: 'ms', color: '#f59e0b', icon: '⏱' }] : []),
+              ].map(metric => {
+                const vals = vpnChartData.map(v => metric.key === 'latency' ? v.latency : metric.key === 'dl' ? v.dl : v.ul);
+                const maxVal = Math.max(...vals, 1);
+                return (
+                  <div key={metric.key}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: metric.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {metric.icon} {metric.label}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      {vpnChartData.map((v, i) => {
+                        const val = metric.key === 'latency' ? v.latency : metric.key === 'dl' ? v.dl : v.ul;
+                        const pct = metric.key === 'latency'
+                          ? Math.round((1 - val / maxVal) * 100)
+                          : Math.round((val / maxVal) * 100);
+                        const barW = metric.key === 'latency'
+                          ? Math.round((1 - val / maxVal) * 100)
+                          : Math.round((val / maxVal) * 100);
+                        const hatColor = i === 0 ? '#a855f7' : '#38bdf8';
+                        if (metric.key === 'latency' && val === 0) return null;
+                        return (
+                          <div key={v.name} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: hatColor, width: '72px', flexShrink: 0 }}>{v.name}</span>
+                            <div style={{ flex: 1, background: 'var(--bg-base)', borderRadius: '99px', height: '10px', overflow: 'hidden', position: 'relative' }}>
+                              <div style={{
+                                width: `${barW}%`, height: '100%', borderRadius: '99px',
+                                background: `linear-gradient(90deg, ${hatColor}88, ${metric.color})`,
+                                transition: 'width 0.7s ease',
+                                boxShadow: `0 0 6px ${metric.color}66`,
+                              }}/>
+                            </div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)', width: '52px', textAlign: 'right', flexShrink: 0 }}>
+                              {val > 0 ? `${val} ${metric.unit}` : '—'}
+                            </span>
+                            <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)', width: '28px', textAlign: 'right', flexShrink: 0 }}>
+                              {pct}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Hat özet satırı */}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
                 {vpnChartData.map((v, i) => (
-                  <div key={v.name} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 ? '#a855f7' : '#38bdf8' }}/>
-                    <span style={{ color: 'var(--text-secondary)' }}>{v.name}</span>
+                  <div key={v.name} style={{ flex: 1, background: 'var(--bg-base)', borderRadius: '8px', padding: '8px 10px', borderTop: `2px solid ${i === 0 ? '#a855f7' : '#38bdf8'}` }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: i === 0 ? '#a855f7' : '#38bdf8', marginBottom: '4px' }}>{v.name}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+                      <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(v.dl)}</span> / <span style={{ color: '#38bdf8', fontWeight: 600 }}>{fmt(v.ul)}</span> Mbps
+                      {v.latency > 0 && <><br/><span style={{ color: '#f59e0b', fontWeight: 600 }}>{v.latency} ms</span> gecikme</>}
+                    </div>
                   </div>
                 ))}
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>

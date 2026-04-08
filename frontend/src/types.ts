@@ -1,6 +1,6 @@
-export type View = 'map' | 'dashboard' | 'reports' | 'missions' | 'settings';
+export type View = 'map' | 'dashboard' | 'reports' | 'missions' | 'settings' | 'logs' | 'sdwan';
 export type ReportType = 'summary' | 'missions' | 'countries' | 'continents' | 'vpntypes' | 'all';
-export type VpnTab = 'GSM' | 'METRO';
+export type VpnTab = 'GSM' | 'METRO' | 'HUB';
 
 export interface Mission {
   id: number;
@@ -20,6 +20,11 @@ export interface Mission {
   metro_latency?: number | null;
   metro_device?: string | null;
   metro_test_time?: string | null;
+  hub_download?: number | null;
+  hub_upload?: number | null;
+  hub_latency?: number | null;
+  hub_device?: string | null;
+  hub_test_time?: string | null;
 }
 
 export interface StatPoint {
@@ -57,6 +62,22 @@ export interface CityRow {
   type: string | null;
   lat: number | null;
   lon: number | null;
+  device_name?: string | null; // FortiGate cihaz adı — boşsa CityName ile eşleştirilir
+}
+
+export interface SdwanMember {
+  seq_id: number;
+  interface: string;
+  cost: number | null;
+}
+
+export interface SdwanRow {
+  city_id: number;
+  city_name: string;
+  active_seq_id: number | null;
+  active_interface: string | null;
+  updated_at: string | null;
+  members: SdwanMember[] | null;
 }
 
 export interface ActivityEntry {
@@ -79,7 +100,7 @@ export const fmt = (v: unknown, d = 2) => {
 };
 
 export const getBestDownload = (m: Mission) =>
-  Math.max(Number(m.gsm_download ?? 0), Number(m.metro_download ?? 0));
+  Math.max(Number(m.gsm_download ?? 0), Number(m.metro_download ?? 0), Number(m.hub_download ?? 0));
 
 export const getBestUpload = (m: Mission) =>
   Math.max(Number(m.gsm_upload ?? 0), Number(m.metro_upload ?? 0));

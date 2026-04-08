@@ -8,7 +8,8 @@ WORKDIR /app
 
 # Tüm bağımlılıkları yükle (dev dahil — derleme için gerekli)
 COPY package*.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline
 
 # Source kopyala ve TypeScript derle
 COPY . .
@@ -23,7 +24,8 @@ ENV ITAI_MODE=${ITAI_MODE}
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev --prefer-offline
 
 # Derlenmiş JS'i kopyala
 COPY --from=builder /app/dist ./dist

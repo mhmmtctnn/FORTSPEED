@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { FilterCombobox } from './FilterCombobox';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
 import { BarChart3, Filter, Download, Trophy, Globe, Activity, ListFilter, Calendar, X } from 'lucide-react';
 import { Mission, CityRow, Filters, FilterOptions, ReportType, fmt, getBestDownload } from '../types';
@@ -226,7 +227,6 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc');
   const [showAllVpnMissions, setShowAllVpnMissions] = useState(false);
   const [nocPeriod, setNocPeriod] = useState<'daily'|'weekly'|'monthly'>('monthly');
-  const [nocMetric, setNocMetric] = useState<'dl'|'ul'>('dl');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const reportContentRef = useRef<HTMLDivElement>(null);
   const { data: nocData, isFetching: nocLoading } = useNocSummary(nocPeriod);
@@ -277,8 +277,8 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
     });
 
     const vpnCompare = [
-      { name: '📶 GSM', İndirme: gsmCount ? Number((gsmSum/gsmCount).toFixed(1)) : 0, unit: 'Mbps' },
-      { name: '🌐 Karasal', İndirme: metroCount ? Number((metroSum/metroCount).toFixed(1)) : 0, unit: 'Mbps' }
+      { name: '📶 GSM',      dl: gsmCount   ? Number((gsmSum/gsmCount).toFixed(1))     : 0, unit: 'Mbps' },
+      { name: '🌐 Karasal', dl: metroCount ? Number((metroSum/metroCount).toFixed(1)) : 0, unit: 'Mbps' },
     ];
 
     const missionPie = cMissions.map(m => ({
@@ -316,10 +316,15 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
   }, [missions, filters.continent]);
 
   const vpnAnalytics = useMemo(() => {
-    const gsmList = missions.filter(m => m.gsm_download).map(m => ({ id: m.id, name: m.name, continent: m.continent, country: m.country, İndirme: m.gsm_download, unit: 'Mbps' })).sort((a,b) => (b.İndirme||0) - (a.İndirme||0));
-    const metroList = missions.filter(m => m.metro_download).map(m => ({ id: m.id, name: m.name, continent: m.continent, country: m.country, İndirme: m.metro_download, unit: 'Mbps' })).sort((a,b) => (b.İndirme||0) - (a.İndirme||0));
+    const norm = (s: any) => String(s || '').replace(/İ/g, 'I').replace(/ı/g, 'I').replace(/i/g, 'I').toUpperCase().trim();
+    let base = missions.filter(m => m.name !== 'MERKEZ_FW');
+    if (filters.continent) base = base.filter(m => norm(m.continent) === norm(filters.continent));
+    if (filters.country)   base = base.filter(m => String(m.country || '').trim() === filters.country);
+    if (filters.missionId) base = base.filter(m => String(m.id) === filters.missionId);
+    const gsmList   = base.filter(m => m.gsm_download).map(m => ({ id: m.id, name: m.name, continent: m.continent, country: m.country, İndirme: m.gsm_download, unit: 'Mbps' })).sort((a,b) => (b.İndirme||0) - (a.İndirme||0));
+    const metroList = base.filter(m => m.metro_download).map(m => ({ id: m.id, name: m.name, continent: m.continent, country: m.country, İndirme: m.metro_download, unit: 'Mbps' })).sort((a,b) => (b.İndirme||0) - (a.İndirme||0));
     return { gsmList, metroList };
-  }, [missions]);
+  }, [missions, filters.continent, filters.country, filters.missionId]);
 
   // Orijinal Sıralama
   const sortData = (data: Record<string, unknown>[]) => {
@@ -371,113 +376,155 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
           {REPORT_TYPES.map(t => (
             <button key={t.value} className={`tab-btn ${filters.reportType === t.value ? 'active' : ''}`}
-              onClick={() => onFiltersChange({ ...filters, reportType: t.value })}>
+              onClick={() => onFiltersChange({ ...filters, reportType: t.value, continent: '', country: '', missionId: '' })}>
               {t.label}
             </button>
           ))}
         </div>
 
         {/* Filters */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', background: 'var(--bg-surface)', padding: '14px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', flexWrap: 'wrap' }}>
-          <Filter size={14} color="var(--text-muted)" style={{ flexShrink: 0 }}/>
+        {(() => {
+          const showCountry   = filters.reportType !== 'summary' && filters.reportType !== 'continents';
+          const showMission   = filters.reportType === 'missions' || filters.reportType === 'vpntypes' || filters.reportType === 'all';
+          const visibleMissions = missions
+            .filter(m => m.name !== 'MERKEZ_FW')
+            .filter(m => !filters.continent || m.continent === filters.continent)
+            .filter(m => !filters.country || String(m.country || '').trim() === filters.country)
+            .sort((a, b) => a.name.localeCompare(b.name));
+          const dateErr    = validateDateRange(filters.startDate, filters.endDate);
+          const hasFilter  = !!(filters.continent || filters.country || filters.missionId || filters.startDate || filters.endDate || filters.minSpeed || filters.maxSpeed);
+          const clearAll   = () => onFiltersChange({ ...filters, continent: '', country: '', missionId: '', startDate: '', endDate: '', minSpeed: '', maxSpeed: '' });
+          const activeCount = [filters.continent, filters.country, filters.missionId, filters.startDate || filters.endDate, filters.minSpeed || filters.maxSpeed].filter(Boolean).length;
 
-          {/* Kıta */}
-          {['continents', 'countries', 'missions', 'vpns', 'all'].includes(filters.reportType) && (
-            <select className="form-control" style={{ width: 'auto', minWidth: 130 }} value={filters.continent}
-              onChange={e => onFiltersChange({ ...filters, continent: e.target.value, country: '', missionId: '' })}>
-              <option value="">Tüm Kıtalar</option>
-              {filterOptions.continents.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          )}
-
-          {/* Ülke */}
-          {['countries', 'missions', 'vpns', 'all'].includes(filters.reportType) && (
-            <select className="form-control" style={{ width: 'auto', minWidth: 130 }} value={filters.country}
-              onChange={e => onFiltersChange({ ...filters, country: e.target.value, missionId: '' })}>
-              <option value="">Ülke Seç</option>
-              {availableCountries.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          )}
-
-          {/* Misyon (ülke seçilince görünür) */}
-          {['missions', 'all'].includes(filters.reportType) && filters.country && (() => {
-            const countryMissions = missions
-              .filter(m => String(m.country || '').trim() === filters.country)
-              .sort((a, b) => a.name.localeCompare(b.name));
-            return (
-              <select className="form-control" style={{ width: 'auto', minWidth: 160, borderColor: 'var(--accent)', color: 'var(--accent)' }}
-                value={filters.missionId} onChange={e => onFiltersChange({ ...filters, missionId: e.target.value })}>
-                <option value="">Tüm Misyonlar</option>
-                {countryMissions.map(m => <option key={m.id} value={String(m.id)}>{m.name}</option>)}
-              </select>
-            );
-          })()}
-
-          {/* Tarih Aralığı */}
-          {filters.reportType !== 'summary' && (() => {
-            const dateErr = validateDateRange(filters.startDate, filters.endDate);
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '8px',
-                  background: 'var(--bg-base)', padding: '6px 10px',
-                  borderRadius: dateErr ? 'var(--radius) var(--radius) 0 0' : 'var(--radius)',
-                  border: `1px solid ${dateErr ? 'rgba(239,68,68,0.5)' : 'var(--border)'}`,
-                  borderBottom: dateErr ? 'none' : undefined, flexWrap: 'nowrap', transition: 'border-color 0.2s'
-                }}>
-                  <Calendar size={13} color={dateErr ? 'var(--red, #f43f5e)' : 'var(--text-muted)'} style={{ flexShrink: 0 }}/>
-                  <input type="date" className="form-control"
-                    style={{ width: 'auto', borderColor: dateErr && filters.startDate ? 'var(--red)' : undefined }}
-                    value={filters.startDate} min={DATA_MIN} max={today()}
-                    onChange={e => onFiltersChange({ ...filters, startDate: e.target.value })}/>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
-                  <input type="date" className="form-control"
-                    style={{ width: 'auto', borderColor: dateErr && filters.endDate ? 'var(--red)' : undefined }}
-                    value={filters.endDate} min={filters.startDate || DATA_MIN} max={today()}
-                    onChange={e => onFiltersChange({ ...filters, endDate: e.target.value })}/>
-                  {(filters.startDate || filters.endDate) && (
-                    <button className="btn btn-secondary" style={{ padding: '4px 7px' }}
-                      onClick={() => onFiltersChange({ ...filters, startDate: '', endDate: '' })}>
-                      <X size={11}/>
+          return (
+            <div style={{ marginBottom: '20px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              {/* Başlık satırı */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+                <Filter size={13} color="var(--accent)" />
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Filtreler</span>
+                {hasFilter && (
+                  <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: '99px', fontSize: '0.65rem', padding: '1px 8px', fontWeight: 700 }}>
+                    {activeCount} aktif
+                  </span>
+                )}
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {hasFilter && (
+                    <button className="btn btn-secondary" onClick={clearAll}
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.74rem', padding: '4px 10px', color: '#fca5a5', borderColor: 'rgba(239,68,68,0.35)' }}>
+                      <X size={11} /> Temizle
                     </button>
                   )}
-                  <div style={{ display: 'flex', gap: '3px', marginLeft: '4px' }}>
-                    {QUICK_DATE.map(q => (
-                      <button key={q.label} className="tab-btn"
-                        style={{ padding: '3px 8px', fontSize: '0.7rem' }}
-                        onClick={() => { const r = q.fn(); onFiltersChange({ ...filters, startDate: r.startDate, endDate: r.endDate }); }}
-                      >{q.label}</button>
-                    ))}
-                  </div>
+                  <button className="btn btn-primary" onClick={onApply} disabled={loading}
+                    style={{ fontSize: '0.74rem', padding: '4px 14px' }}>
+                    {loading ? 'Yükleniyor...' : 'Uygula'}
+                  </button>
                 </div>
-                {dateErr && (
-                  <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderTop: 'none',
-                    color: '#fca5a5', padding: '5px 10px', borderRadius: '0 0 var(--radius) var(--radius)',
-                    fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>⚠ {dateErr}</div>
-                )}
               </div>
-            );
-          })()}
 
-          {/* Hız Eşiği Filtresi */}
-          {filters.reportType !== 'summary' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 8px' }}>
-              <Activity size={12} color="var(--text-muted)" />
-              <input type="number" className="form-control" placeholder="Min Mbps" min={0} step={1}
-                style={{ width: '90px', border: 'none', background: 'transparent', padding: '6px 2px', fontSize: '0.8rem' }}
-                value={filters.minSpeed} onChange={e => onFiltersChange({ ...filters, minSpeed: e.target.value })}/>
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>–</span>
-              <input type="number" className="form-control" placeholder="Max Mbps" min={0} step={1}
-                style={{ width: '90px', border: 'none', background: 'transparent', padding: '6px 2px', fontSize: '0.8rem' }}
-                value={filters.maxSpeed} onChange={e => onFiltersChange({ ...filters, maxSpeed: e.target.value })}/>
+              {/* Filtre grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: '10px 14px', padding: '14px 16px', alignItems: 'start' }}>
+
+                {/* Kıta */}
+                {filters.reportType !== 'summary' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Kıta</span>
+                    <FilterCombobox value={filters.continent}
+                      onChange={continent => onFiltersChange({ ...filters, continent, country: '', missionId: '' })}
+                      options={filterOptions.continents.map(c => ({ value: c, label: c }))}
+                      placeholder="Tümü" minWidth={0} />
+                  </div>
+                )}
+
+                {/* Ülke */}
+                {showCountry && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ülke</span>
+                    <FilterCombobox value={filters.country}
+                      onChange={country => {
+                        const continent = country ? (missions.find(m => m.country === country)?.continent ?? filters.continent) : filters.continent;
+                        onFiltersChange({ ...filters, continent, country, missionId: '' });
+                      }}
+                      options={availableCountries.map(c => ({ value: c, label: c }))}
+                      placeholder="Tümü" minWidth={0} />
+                  </div>
+                )}
+
+                {/* Misyon */}
+                {showMission && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Misyon</span>
+                    <FilterCombobox value={filters.missionId}
+                      onChange={missionId => {
+                        const m = missionId ? missions.find(m => String(m.id) === missionId) : null;
+                        onFiltersChange({ ...filters, continent: m?.continent ?? filters.continent, country: m?.country ?? filters.country ?? '', missionId });
+                      }}
+                      options={visibleMissions.map(m => ({ value: String(m.id), label: m.name }))}
+                      placeholder={`Tümü (${visibleMissions.length})`} minWidth={0} />
+                  </div>
+                )}
+
+                {/* Tarih */}
+                {filters.reportType !== 'summary' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', gridColumn: 'span 2' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Calendar size={10} /> Tarih Aralığı
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-elevated)', border: `1px solid ${dateErr ? 'rgba(239,68,68,0.5)' : 'var(--border)'}`, borderRadius: 'var(--radius-sm)', padding: '4px 10px' }}>
+                        <input type="date" className="form-control"
+                          style={{ width: 'auto', border: 'none', background: 'transparent', padding: 0, fontSize: '0.8rem' }}
+                          value={filters.startDate} min={DATA_MIN} max={today()}
+                          onChange={e => onFiltersChange({ ...filters, startDate: e.target.value })} />
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
+                        <input type="date" className="form-control"
+                          style={{ width: 'auto', border: 'none', background: 'transparent', padding: 0, fontSize: '0.8rem' }}
+                          value={filters.endDate} min={filters.startDate || DATA_MIN} max={today()}
+                          onChange={e => onFiltersChange({ ...filters, endDate: e.target.value })} />
+                        {(filters.startDate || filters.endDate) && (
+                          <button className="btn btn-secondary" style={{ padding: '2px 5px' }}
+                            onClick={() => onFiltersChange({ ...filters, startDate: '', endDate: '' })}>
+                            <X size={10} />
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {QUICK_DATE.map(q => (
+                          <button key={q.label} className="tab-btn" style={{ padding: '4px 9px', fontSize: '0.7rem' }}
+                            onClick={() => { const r = q.fn(); onFiltersChange({ ...filters, startDate: r.startDate, endDate: r.endDate }); }}>
+                            {q.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {dateErr && <span style={{ color: '#fca5a5', fontSize: '0.71rem' }}>⚠ {dateErr}</span>}
+                  </div>
+                )}
+
+                {/* Hız */}
+                {filters.reportType !== 'summary' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Activity size={10} /> Hız (Mbps)
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 10px' }}>
+                      <input type="number" className="form-control" placeholder="Min" min={0} step={1}
+                        style={{ width: '56px', border: 'none', background: 'transparent', padding: 0, fontSize: '0.8rem' }}
+                        value={filters.minSpeed} onChange={e => onFiltersChange({ ...filters, minSpeed: e.target.value })} />
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>–</span>
+                      <input type="number" className="form-control" placeholder="Max" min={0} step={1}
+                        style={{ width: '56px', border: 'none', background: 'transparent', padding: 0, fontSize: '0.8rem' }}
+                        value={filters.maxSpeed} onChange={e => onFiltersChange({ ...filters, maxSpeed: e.target.value })} />
+                    </div>
+                  </div>
+                )}
+
+              </div>
             </div>
-          )}
+          );
+        })()}
 
-          <button className="btn btn-primary" onClick={onApply} disabled={loading} style={{ marginLeft: 'auto' }}>
-            {loading ? 'Yükleniyor...' : 'Uygula'}
-          </button>
-
-          {/* Export Menüsü */}
+        {/* Export Menüsü */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px', position: 'relative' }}>
           <div style={{ position: 'relative' }}>
             <button className="btn btn-secondary"
               onClick={() => setExportMenuOpen(p => !p)}
@@ -505,7 +552,6 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                   }},
                   { label: '📄 PDF', action: () => {
                     const data = filters.reportType === 'summary' ? [] : (missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports);
-                    // 'report-content-area' varsa ID olarak pasla ki grafikler tepeye yazılsın
                     exportPdf(data, `rapor-${filters.reportType}-${Date.now()}.pdf`, 'report-content-area');
                   }},
                   { label: '🖼️ PNG', action: () => exportImage('report-content-area', `rapor-${filters.reportType}-${Date.now()}.png`, 'png') },
@@ -591,41 +637,43 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                    </div>
                    
                    {/* GSM Top 10 */}
-                   <div className="glass-card" style={{ padding: '20px', borderTop: `4px solid ${nocMetric === 'dl' ? '#a855f7' : '#f59e0b'}` }}>
-                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div className="section-title" style={{ marginBottom: 0 }}>📶 GSM Top 10 İstasyon</div>
-                        <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-base)', padding: '4px', borderRadius: '8px' }}>
-                           <button onClick={() => setNocMetric('dl')} className={`btn ${nocMetric === 'dl' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '2px 8px', fontSize: '0.7rem' }}>↓ İndirme</button>
-                           <button onClick={() => setNocMetric('ul')} className={`btn ${nocMetric === 'ul' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '2px 8px', fontSize: '0.7rem' }}>↑ Yükleme</button>
-                        </div>
-                     </div>
-                     <ResponsiveContainer width="100%" height={300}>
-                       <BarChart layout="vertical" data={(nocMetric === 'dl' ? nocData.top_gsm_dl : nocData.top_gsm_ul)?.map((c: any) => ({ ...c, [nocMetric === 'dl' ? 'İndirme' : 'Yükleme']: Number(c[nocMetric]) }))} margin={{top:10, right:30, left:20, bottom:0}}>
+                   <div className="glass-card" style={{ padding: '20px', borderTop: '4px solid #a855f7' }}>
+                     <div className="section-title" style={{ marginBottom: '12px' }}>📶 GSM Top 10 İstasyon</div>
+                     <ResponsiveContainer width="100%" height={320}>
+                       <BarChart layout="vertical"
+                         data={nocData.top_gsm_dl?.map((c: any) => {
+                           const ul = nocData.top_gsm_ul?.find((u: any) => u.name === c.name);
+                           return { name: c.name, İndirme: Number(c.dl), Yükleme: Number(ul?.ul ?? 0) };
+                         })}
+                         margin={{top:10, right:30, left:20, bottom:0}}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
                           <XAxis type="number" hide />
-                          <YAxis dataKey="name" type="category" width={100} tick={{fill:'var(--text-muted)'}} />
+                          <YAxis dataKey="name" type="category" width={110} tick={{fill:'var(--text-muted)', fontSize: 11}} />
                           <Tooltip content={<CustomTooltip />} />
-                          <Bar dataKey={nocMetric === 'dl' ? 'İndirme' : 'Yükleme'} fill={nocMetric === 'dl' ? '#a855f7' : '#f59e0b'} radius={[0, 4, 4, 0]} />
+                          <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: 8 }} />
+                          <Bar dataKey="İndirme" fill="#a855f7" radius={[0, 4, 4, 0]} barSize={10} />
+                          <Bar dataKey="Yükleme" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={10} />
                        </BarChart>
                      </ResponsiveContainer>
                    </div>
 
                    {/* Metro Top 10 */}
-                   <div className="glass-card" style={{ padding: '20px', borderTop: `4px solid ${nocMetric === 'dl' ? '#38bdf8' : '#3b82f6'}` }}>
-                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div className="section-title" style={{ marginBottom: 0 }}>🌐 Karasal (Metro) Top 10</div>
-                        <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-base)', padding: '4px', borderRadius: '8px' }}>
-                           <button onClick={() => setNocMetric('dl')} className={`btn ${nocMetric === 'dl' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '2px 8px', fontSize: '0.7rem' }}>↓ İndirme</button>
-                           <button onClick={() => setNocMetric('ul')} className={`btn ${nocMetric === 'ul' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '2px 8px', fontSize: '0.7rem' }}>↑ Yükleme</button>
-                        </div>
-                     </div>
-                     <ResponsiveContainer width="100%" height={300}>
-                       <BarChart layout="vertical" data={(nocMetric === 'dl' ? nocData.top_metro_dl : nocData.top_metro_ul)?.map((c: any) => ({ ...c, [nocMetric === 'dl' ? 'İndirme' : 'Yükleme']: Number(c[nocMetric]) }))} margin={{top:10, right:30, left:20, bottom:0}}>
+                   <div className="glass-card" style={{ padding: '20px', borderTop: '4px solid #38bdf8' }}>
+                     <div className="section-title" style={{ marginBottom: '12px' }}>🌐 Karasal (Metro) Top 10</div>
+                     <ResponsiveContainer width="100%" height={320}>
+                       <BarChart layout="vertical"
+                         data={nocData.top_metro_dl?.map((c: any) => {
+                           const ul = nocData.top_metro_ul?.find((u: any) => u.name === c.name);
+                           return { name: c.name, İndirme: Number(c.dl), Yükleme: Number(ul?.ul ?? 0) };
+                         })}
+                         margin={{top:10, right:30, left:20, bottom:0}}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
                           <XAxis type="number" hide />
-                          <YAxis dataKey="name" type="category" width={100} tick={{fill:'var(--text-muted)'}} />
+                          <YAxis dataKey="name" type="category" width={110} tick={{fill:'var(--text-muted)', fontSize: 11}} />
                           <Tooltip content={<CustomTooltip />} />
-                          <Bar dataKey={nocMetric === 'dl' ? 'İndirme' : 'Yükleme'} fill={nocMetric === 'dl' ? '#38bdf8' : '#3b82f6'} radius={[0, 4, 4, 0]} />
+                          <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: 8 }} />
+                          <Bar dataKey="İndirme" fill="#38bdf8" radius={[0, 4, 4, 0]} barSize={10} />
+                          <Bar dataKey="Yükleme" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={10} />
                        </BarChart>
                      </ResponsiveContainer>
                    </div>
@@ -711,8 +759,8 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                         <XAxis type="number" hide/>
                         <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false}/>
                         <Tooltip content={<CustomTooltip />}/>
-                        <Bar dataKey="İndirme" radius={[0,4,4,0]} barSize={20}>
-                           {countryAnalytics.vpnCompare.map((entry, index) => (
+                        <Bar dataKey="dl" name="İndirme (Ort.)" radius={[0,4,4,0]} barSize={20}>
+                           {countryAnalytics.vpnCompare.map((_entry, index) => (
                              <Cell key={`cell-${index}`} fill={index === 0 ? '#a855f7' : '#38bdf8'} />
                            ))}
                         </Bar>

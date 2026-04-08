@@ -53,6 +53,7 @@ services:
         condition: service_started
     ports:
       - "3000:3000"
+      - "8080:3000"
     volumes:
       - ./backend/src:/app/src
     networks:

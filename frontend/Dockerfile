@@ -3,9 +3,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Dependencies yükle
+# Dependencies yükle (npm ci ile deterministik ve hızlı)
 COPY package*.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline
 
 # Source kod kopyala
 COPY . .

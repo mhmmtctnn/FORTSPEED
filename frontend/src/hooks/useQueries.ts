@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { API_BASE, Mission, CityRow, FilterOptions, Filters } from '../types';
+import { API_BASE, Mission, CityRow, FilterOptions, Filters, SdwanRow } from '../types';
 
 // Dashboard için tarih aralığı
 export interface DateRange {
@@ -129,3 +129,11 @@ export const useCityMutations = () => {
 
   return { addCity, updateCity, deleteCity };
 };
+
+export const useSdwan = () =>
+  useQuery<SdwanRow[]>({
+    queryKey: ['sdwan'],
+    queryFn: async () => (await axios.get(`${API_BASE}/sdwan`)).data,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });

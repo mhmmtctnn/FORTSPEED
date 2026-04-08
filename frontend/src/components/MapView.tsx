@@ -1,30 +1,46 @@
-import { useRef, useEffect, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
+import { FilterCombobox } from './FilterCombobox';
 import Map, { Marker, NavigationControl, Popup, MapRef, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck } from 'lucide-react';
-import { Mission, StatPoint, FilterOptions, VpnTab, getMarkerColor, getQualityClass, getQualityLabel } from '../types';
+import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck, GitBranch } from 'lucide-react';
+import { Mission, StatPoint, FilterOptions, VpnTab, SdwanRow, getMarkerColor, getQualityClass, getQualityLabel } from '../types';
 
 interface Props {
   missions: Mission[];
   selectedMission: Mission | null;
   statsGsm: StatPoint[];
   statsMetro: StatPoint[];
+  statsHub: StatPoint[];
   selectedVpnTab: VpnTab;
   popupInfo: Mission | null;
   filterOptions: FilterOptions;
-  mapFilter: { continent: string; country: string };
+  mapFilter: { continent: string; country: string; mission: string };
   filteredMissions: Mission[];
   showFlags: boolean;
   showHeatmap: boolean;
   theme?: 'dark' | 'light';
   merkezFW: { lat: number; lon: number; name: string };
+  sdwanData?: SdwanRow[];
   onMarkerClick: (m: Mission) => void;
+  onClearSelection: () => void;
   onSetPopup: (m: Mission | null) => void;
   onSetVpnTab: (t: VpnTab) => void;
-  onMapFilterChange: (f: { continent: string; country: string }) => void;
+  onMapFilterChange: (f: { continent: string; country: string; mission: string }) => void;
 }
 
+
+// Kıta adı → [minLon, minLat, maxLon, maxLat] sınır kutusu (fitBounds için)
+const CONTINENT_BBOX: Record<string, [number, number, number, number]> = {
+  'AVRUPA':        [-25, 34, 45, 72],
+  'ASYA':          [25, -10, 145, 55],
+  'AFRIKA':        [-20, -36, 55, 38],
+  'KUZEY AMERIKA': [-170, 10, -50, 75],
+  'KUZEY AMEIRKA': [-170, 10, -50, 75],
+  'GUNEY AMERIKA': [-82, -56, -34, 13],
+  'AVUSTRALYA':    [110, -48, 180, 10],
+  'AVUSTURALYA':   [110, -48, 180, 10],
+};
 
 function getBbox(geometry: { type: string; coordinates: unknown }): [number, number, number, number] {
   let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
@@ -68,11 +84,31 @@ function greatCircleArc(
 }
 
 export default function MapView({
-  missions, selectedMission, statsGsm, statsMetro, selectedVpnTab, popupInfo,
+  missions, selectedMission, statsGsm, statsMetro, statsHub, selectedVpnTab, popupInfo,
   filterOptions, mapFilter, filteredMissions, showFlags, showHeatmap, theme, merkezFW,
-  onMarkerClick, onSetPopup, onSetVpnTab, onMapFilterChange,
+  sdwanData,
+  onMarkerClick, onClearSelection, onSetPopup, onSetVpnTab, onMapFilterChange,
 }: Props) {
-  const activeStats = selectedVpnTab === 'GSM' ? statsGsm : statsMetro;
+  const [vpnMapFilter, setVpnMapFilter] = useState<'GSM' | 'METRO' | 'HUB' | null>(null);
+
+  const sdwanByCity = useMemo(() => {
+    const obj: Record<number, SdwanRow> = {};
+    (sdwanData || []).forEach(r => { obj[r.city_id] = r; });
+    return obj;
+  }, [sdwanData]);
+
+  // VPN tipi overlay filtresine göre misyonları daralt
+  const mapFilteredMissions = useMemo(() => {
+    if (!vpnMapFilter) return filteredMissions;
+    return filteredMissions.filter(m => {
+      if (vpnMapFilter === 'GSM')   return m.gsm_download != null || m.gsm_upload != null;
+      if (vpnMapFilter === 'METRO') return m.metro_download != null || m.metro_upload != null;
+      if (vpnMapFilter === 'HUB')   return m.hub_download != null || m.hub_upload != null;
+      return true;
+    });
+  }, [filteredMissions, vpnMapFilter]);
+
+  const activeStats = selectedVpnTab === 'GSM' ? statsGsm : selectedVpnTab === 'HUB' ? statsHub : statsMetro;
   const mapRef = useRef<MapRef>(null);
   const worldFlagsLoaded = useRef(false);
   const flagLayerIds = useRef<string[]>([]);
@@ -90,6 +126,15 @@ export default function MapView({
         .map(m => m.country as string)
     )].sort();
   }, [missions, mapFilter.continent, filterOptions.countries]);
+
+  // Kıta+Ülke seçimine göre misyonları filtrele (dropdown için)
+  const availableMissions = useMemo(() => {
+    return missions
+      .filter(m => m.name !== 'MERKEZ_FW')
+      .filter(m => !mapFilter.continent || m.continent === mapFilter.continent)
+      .filter(m => !mapFilter.country || m.country === mapFilter.country)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [missions, mapFilter.continent, mapFilter.country]);
 
   const heatmapData = useMemo(() => {
     return {
@@ -146,16 +191,14 @@ export default function MapView({
 
   const rafRef = useRef<number | null>(null);
 
-  // Arc koordinatlarını rAF döngüsü için ref'te sakla (closure sorunundan kaçınmak için)
-  const arcCoordsRef = useRef<Record<string, Array<[number, number][]>>>({});
+  // Arc koordinatlarını ve özelliklerini rAF döngüsü için ref'te sakla
+  const arcFeaturesRef = useRef<Record<string, any[]>>({});
   useEffect(() => {
-    const coords: Record<string, Array<[number, number][]>> = {};
+    const features: Record<string, any[]> = {};
     arcByTier.forEach(({ tier, geojson }) => {
-      coords[tier.id] = geojson.features.map(
-        f => (f as any).geometry.coordinates as [number, number][]
-      );
+      features[tier.id] = geojson.features;
     });
-    arcCoordsRef.current = coords;
+    arcFeaturesRef.current = features;
   }, [arcByTier]);
 
   useEffect(() => {
@@ -183,15 +226,14 @@ export default function MapView({
 
       const now = Date.now();
       tiers.forEach(({ id, cyclePeriod }) => {
-        const arcs = arcCoordsRef.current[id] || [];
+        const baseFeatures = arcFeaturesRef.current[id] || [];
         const features: object[] = [];
 
-        arcs.forEach(coords => {
+        baseFeatures.forEach(bf => {
+          const coords = bf.geometry.coordinates as [number, number][];
           const n = coords.length;
           if (n < 2) return;
 
-          // Her arc'ın başlangıç koordinatından türetilen sabit faz ofseti.
-          // Bu sayede aynı gruptaki arclar birbirinden bağımsız kademeli ilerler.
           const lon0 = coords[0][0];
           const lat0 = coords[0][1];
           const phaseOffset = ((lon0 * 137.508 + lat0 * 97.333) % cyclePeriod + cyclePeriod) % cyclePeriod;
@@ -205,14 +247,14 @@ export default function MapView({
           features.push({
             type: 'Feature',
             geometry: { type: 'LineString', coordinates: coords.slice(segStart, segEnd + 1) },
-            properties: {},
+            properties: bf.properties || {}, // ID ve özellikleri aktarıyoruz!
           });
         });
 
         try {
           const src = map.getSource(`arc-dot-src-${id}`) as any;
           if (src?.setData) src.setData({ type: 'FeatureCollection', features });
-        } catch { /* source henüz hazır değil */ }
+        } catch { /* kaynak yükleniyor olabilir */ }
       });
 
       rafRef.current = requestAnimationFrame(animate);
@@ -223,7 +265,15 @@ export default function MapView({
   }, []);
 
   const handleContinentChange = (continent: string) => {
-    onMapFilterChange({ continent, country: '' });
+    onMapFilterChange({ continent, country: '', mission: '' });
+    onSetPopup(null);
+    // Kıta seçilince harita o bölgeye genel zoom yapar — otomatik misyon seçimi yapılmaz
+    if (continent) {
+      const bbox = CONTINENT_BBOX[continent];
+      if (bbox && mapRef.current) {
+        mapRef.current.fitBounds(bbox, { padding: 40, duration: 800 });
+      }
+    }
   };
 
   // Dünya ülkesi bayrak overlay — sadece 1 kez yüklenir
@@ -471,33 +521,95 @@ export default function MapView({
   return (
     <>
       {/* Left Panel */}
-      <div className="glass-panel" style={{ width: '420px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', overflowY: 'auto', flexShrink: 0, zIndex: 10 }}>
-        <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="glass-panel" style={{ width: '420px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', flexShrink: 0, zIndex: 10, overflow: 'visible' }}>
+        <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)', overflow: 'visible', position: 'relative', zIndex: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
             <MapPin size={18} color="var(--accent)"/>
             <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Misyon Ağ Durumu</h2>
             <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{filteredMissions.length} misyon</span>
+            {selectedMission && (
+              <button
+                onClick={onClearSelection}
+                title="Seçimi kaldır"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '6px',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  lineHeight: 1,
+                  padding: '2px 6px',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+              >✕</button>
+            )}
           </div>
           {/* Kıta filtresi */}
-          <select className="form-control" style={{ marginBottom: '8px' }} value={mapFilter.continent}
-            onChange={e => handleContinentChange(e.target.value)}>
-            <option value="">Tüm Kıtalar</option>
-            {filterOptions.continents.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          {/* Ülke filtresi — sadece seçili kıtadaki ülkeler */}
-          <select className="form-control" value={mapFilter.country}
-            onChange={e => onMapFilterChange({ ...mapFilter, country: e.target.value })}>
-            <option value="">Tüm Ülkeler</option>
-            {availableCountries.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          {mapFilter.continent && (
-            <div style={{ marginTop: '6px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {availableCountries.length} ülke · {filteredMissions.length} misyon gösteriliyor
-            </div>
-          )}
+          <div style={{ marginBottom: '8px' }}>
+            <FilterCombobox
+              value={mapFilter.continent}
+              onChange={handleContinentChange}
+              options={filterOptions.continents.map(c => ({ value: c, label: c }))}
+              placeholder="Tüm Kıtalar"
+            />
+          </div>
+          {/* Ülke filtresi — kıta seçilmişse sadece o kıtanın ülkeleri listelenir */}
+          <div style={{ marginBottom: '8px' }}>
+            <FilterCombobox
+              value={mapFilter.country}
+              onChange={country => {
+                const continent = country
+                  ? (missions.find(m => m.country === country)?.continent ?? mapFilter.continent)
+                  : mapFilter.continent;
+                onMapFilterChange({ ...mapFilter, continent, country, mission: '' });
+                onSetPopup(null);
+                if (country) {
+                  const ref = missions.find(m => m.country === country && m.name !== 'MERKEZ_FW');
+                  if (ref) {
+                    mapRef.current?.flyTo({ center: [Number(ref.lon), Number(ref.lat)], zoom: 5 });
+                  }
+                }
+              }}
+              options={availableCountries.map(c => ({ value: c, label: c }))}
+              placeholder="Tüm Ülkeler"
+            />
+          </div>
+
+          {/* Misyon filtresi — kıta+ülkeye bağlı seçenekler */}
+          <FilterCombobox
+            value={mapFilter.mission}
+            onChange={missionId => {
+              const m = missionId ? missions.find(m => String(m.id) === missionId) : null;
+              const continent = m?.continent ?? mapFilter.continent;
+              const country   = m?.country   ?? mapFilter.country;
+              onMapFilterChange({ continent, country, mission: missionId });
+              onSetPopup(null);
+              if (m) {
+                onMarkerClick(m);
+                mapRef.current?.flyTo({ center: [Number(m.lon), Number(m.lat)], zoom: 6 });
+              }
+            }}
+            options={availableMissions.map(m => ({ value: String(m.id), label: m.name }))}
+            placeholder="Tüm Misyonlar"
+          />
+
+          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{filteredMissions.length} misyon gösteriliyor</span>
+            {(mapFilter.continent || mapFilter.country || mapFilter.mission) && (
+              <button
+                onClick={() => { onMapFilterChange({ continent: '', country: '', mission: '' }); onSetPopup(null); }}
+                style={{ fontSize: '0.7rem', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
+              >
+                Filtreyi Temizle
+              </button>
+            )}
+          </div>
         </div>
 
-        <div style={{ flex: 1, padding: '16px' }}>
+        <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
           {!selectedMission ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>
               <Globe size={56} style={{ marginBottom: '16px', opacity: 0.2 }}/>
@@ -576,6 +688,77 @@ export default function MapView({
                 </div>
               </div>
 
+              {/* HUB */}
+              {selectedMission.hub_download != null || selectedMission.hub_upload != null ? (
+                <div className="glass-card" style={{ padding: '14px', marginBottom: '14px', borderLeft: '3px solid var(--green)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <ShieldCheck size={15} color="var(--green)"/>
+                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--green)' }}>Hub Bağlantısı</span>
+                    {selectedMission.hub_test_time
+                      ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.hub_test_time).toLocaleString('tr-TR')}</span>
+                      : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>Veri yok</span>}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    {[
+                      { label: 'İndirme', value: selectedMission.hub_download, unit: 'Mbps', color: 'var(--green)' },
+                      { label: 'Yükleme', value: selectedMission.hub_upload, unit: 'Mbps', color: 'var(--blue)' },
+                      { label: 'Gecikme', value: selectedMission.hub_latency, unit: 'ms', color: 'var(--amber)', fixed: 0 },
+                    ].map(s => (
+                      <div key={s.label}>
+                        <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>{s.label}</div>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 800, color: s.color }}>
+                          {s.value != null ? Number(s.value).toFixed((s as any).fixed ?? 1) : '–'}
+                          <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginLeft: '2px' }}>{s.unit}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {selectedMission.hub_device && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}><HardDrive size={10}/>{selectedMission.hub_device}</span>}
+                    <span className={`quality-pill ${getQualityClass(selectedMission.hub_download)}`} style={{ marginLeft: 'auto' }}>{getQualityLabel(selectedMission.hub_download)}</span>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* SDWAN Durumu */}
+              {(() => {
+                const sdwan = sdwanByCity[selectedMission.id];
+                if (!sdwan) return null;
+                return (
+                  <div className="glass-card" style={{ padding: '12px 14px', marginBottom: '14px', borderLeft: '3px solid var(--amber)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <GitBranch size={14} color="var(--amber)" />
+                      <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--amber)' }}>SDWAN</span>
+                      {sdwan.active_interface && (
+                        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(245,158,11,0.18)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                          ● {sdwan.active_interface}
+                        </span>
+                      )}
+                    </div>
+                    {sdwan.members && sdwan.members.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {sdwan.members.map(m => {
+                          const isActive = m.seq_id === sdwan.active_seq_id;
+                          return (
+                            <div key={m.seq_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 4, background: isActive ? 'rgba(245,158,11,0.12)' : 'var(--bg-elevated)', border: isActive ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent' }}>
+                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace', minWidth: 14 }}>{m.seq_id}</span>
+                              <span style={{ fontSize: '0.75rem', fontWeight: isActive ? 700 : 400, color: isActive ? 'var(--amber)' : 'var(--text-secondary)', flex: 1 }}>{m.interface}</span>
+                              {m.cost != null && <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>cost {m.cost}</span>}
+                              {isActive && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase' }}>aktif</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {sdwan.updated_at && (
+                      <div style={{ marginTop: 6, fontSize: '0.6rem', color: 'var(--text-muted)' }}>
+                        Son güncelleme: {new Date(sdwan.updated_at).toLocaleString('tr-TR')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Chart */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -585,6 +768,7 @@ export default function MapView({
                   <div style={{ display: 'flex', gap: '4px' }}>
                     <button className={`tab-btn ${selectedVpnTab === 'GSM' ? 'active' : ''}`} style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => onSetVpnTab('GSM')}>GSM</button>
                     <button className={`tab-btn ${selectedVpnTab === 'METRO' ? 'active' : ''}`} style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => onSetVpnTab('METRO')}>Karasal</button>
+                    <button className={`tab-btn ${selectedVpnTab === 'HUB' ? 'active' : ''}`} style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => onSetVpnTab('HUB')}>Hub</button>
                   </div>
                 </div>
                 {activeStats.length === 0 ? (
@@ -618,6 +802,10 @@ export default function MapView({
           mapStyle={theme === 'light' 
             ? "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
             : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"}
+          onClick={() => {
+            // Haritanın boş alanına tıklanınca seçimi kaldır
+            if (selectedMission) onClearSelection();
+          }}
         >
           <NavigationControl position="top-right"/>
           
@@ -668,7 +856,9 @@ export default function MapView({
                 paint={{
                   'line-color': tier.color,
                   'line-width': ['interpolate', ['linear'], ['zoom'], 1, 2, 4, 3.5, 7, 5],
-                  'line-opacity': selectedMission ? 0 : (tier.id === 'slow' ? 1.0 : tier.id === 'medium' ? 0.8 : 0.4),
+                  'line-opacity': selectedMission 
+                    ? ['case', ['==', ['get', 'id'], selectedMission.id], 1.0, 0] 
+                    : (tier.id === 'slow' ? 1.0 : tier.id === 'medium' ? 0.8 : 0.4),
                   'line-blur': 0.4,
                 }}
               />
@@ -746,7 +936,7 @@ export default function MapView({
             </Source>
           )}
 
-          {filteredMissions.map(m => {
+          {mapFilteredMissions.map(m => {
             const color = getMarkerColor(m);
             const selected = selectedMission?.id === m.id;
             return (
@@ -781,6 +971,15 @@ export default function MapView({
                 <div style={{ fontSize: '0.75rem' }}>
                   ↓ <b>{popupInfo.metro_download != null ? Number(popupInfo.metro_download).toFixed(1) : '–'}</b> / ↑ <b>{popupInfo.metro_upload != null ? Number(popupInfo.metro_upload).toFixed(1) : '–'}</b> Mbps · ⏱ {popupInfo.metro_latency != null ? Number(popupInfo.metro_latency).toFixed(0) : '–'} ms
                 </div>
+                {(() => {
+                  const sdwan = sdwanByCity[popupInfo.id];
+                  if (!sdwan?.active_interface) return null;
+                  return (
+                    <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', color: 'var(--amber)', fontWeight: 700 }}>
+                      <GitBranch size={10} /> SDWAN: {sdwan.active_interface}
+                    </div>
+                  );
+                })()}
                 <div style={{ marginTop: '8px', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
                   {popupInfo.city && <span>{popupInfo.city} · </span>}{popupInfo.country}
                 </div>
@@ -788,6 +987,92 @@ export default function MapView({
             </Popup>
           )}
         </Map>
+
+        {/* ── VPN Tipi Filtre (sağ alt köşe) ── */}
+        <div style={{
+          position: 'absolute', bottom: 24, right: 16,
+          zIndex: 20, pointerEvents: 'none',
+        }}>
+          <div className="glass-card" style={{
+            pointerEvents: 'auto',
+            padding: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            minWidth: 130,
+          }}>
+            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0 4px 4px', borderBottom: '1px solid var(--border)' }}>
+              Bağlantı Tipi
+            </div>
+            {([
+              { key: 'GSM'   as const, label: 'GSM',     Icon: Signal,    color: 'var(--purple)' },
+              { key: 'METRO' as const, label: 'Karasal', Icon: Wifi,      color: 'var(--accent)' },
+              { key: 'HUB'   as const, label: 'Hub',     Icon: GitBranch, color: 'var(--green)'  },
+            ] as const).map(({ key, label, Icon, color }) => {
+              const isActive = vpnMapFilter === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setVpnMapFilter(prev => prev === key ? null : key)}
+                  title={`${label} misyonlarını filtrele`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 8px',
+                    background: isActive
+                      ? color === 'var(--purple)' ? 'rgba(168,85,247,0.15)'
+                      : color === 'var(--accent)'  ? 'rgba(56,189,248,0.15)'
+                      : 'rgba(34,197,94,0.15)'
+                      : 'transparent',
+                    border: `1px solid ${isActive ? color : 'transparent'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    color: isActive ? color : 'var(--text-secondary)',
+                    fontWeight: isActive ? 700 : 400,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    width: '100%',
+                    textAlign: 'left',
+                  }}
+                >
+                  <Icon size={13} />
+                  <span style={{ flex: 1 }}>{label}</span>
+                  {isActive && (
+                    <span style={{
+                      background: color,
+                      color: '#fff',
+                      borderRadius: 99,
+                      fontSize: '0.6rem',
+                      fontWeight: 800,
+                      padding: '1px 6px',
+                      minWidth: 18,
+                      textAlign: 'center',
+                    }}>
+                      {mapFilteredMissions.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {vpnMapFilter && (
+              <button
+                onClick={() => setVpnMapFilter(null)}
+                style={{
+                  marginTop: 2,
+                  padding: '4px 8px',
+                  background: 'transparent',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.68rem',
+                  cursor: 'pointer',
+                  width: '100%',
+                }}
+              >
+                Filtreyi Kaldır
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );
