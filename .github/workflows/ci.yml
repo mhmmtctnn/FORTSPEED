@@ -180,13 +180,27 @@ jobs:
           ITAI="${ITAI},${REGISTRY}/${IMAGE_NAME}:${VER}-itai"
           ITAI="${ITAI},${REGISTRY}/${IMAGE_NAME}:${SHA}-itai"
 
+          # Frontend Community tags
+          FE_COMMUNITY="${REGISTRY}/${IMAGE_NAME}-frontend:latest"
+          FE_COMMUNITY="${FE_COMMUNITY},${REGISTRY}/${IMAGE_NAME}-frontend:${VER}"
+          FE_COMMUNITY="${FE_COMMUNITY},${REGISTRY}/${IMAGE_NAME}-frontend:${SHA}"
+
+          # Frontend ITAI tags
+          FE_ITAI="${REGISTRY}/${IMAGE_NAME}-frontend:latest-itai"
+          FE_ITAI="${FE_ITAI},${REGISTRY}/${IMAGE_NAME}-frontend:${VER}-itai"
+          FE_ITAI="${FE_ITAI},${REGISTRY}/${IMAGE_NAME}-frontend:${SHA}-itai"
+
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             COMMUNITY="${COMMUNITY},${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}"
             ITAI="${ITAI},${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}-itai"
+            FE_COMMUNITY="${FE_COMMUNITY},${REGISTRY}/${IMAGE_NAME}-frontend:${GITHUB_REF_NAME}"
+            FE_ITAI="${FE_ITAI},${REGISTRY}/${IMAGE_NAME}-frontend:${GITHUB_REF_NAME}-itai"
           fi
 
           echo "community=${COMMUNITY}" >> "$GITHUB_OUTPUT"
           echo "itai=${ITAI}" >> "$GITHUB_OUTPUT"
+          echo "fe_community=${FE_COMMUNITY}" >> "$GITHUB_OUTPUT"
+          echo "fe_itai=${FE_ITAI}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -218,3 +232,27 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.description=FORTSPEED ITAI Edition (Hub integration)
+
+      - name: Build and push Frontend Community edition
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.tags.outputs.fe_community }}
+          build-args: ITAI_MODE=false
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=FORTSPEED Frontend Community Edition (standalone)
+
+      - name: Build and push Frontend ITAI edition
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.tags.outputs.fe_itai }}
+          build-args: ITAI_MODE=true
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=FORTSPEED Frontend ITAI Edition (Hub integration)
