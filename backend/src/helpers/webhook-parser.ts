@@ -6,14 +6,52 @@
  */
 
 /** Payload türünü otomatik tespit et — combined: hem members hem status aynı body'de */
-export function detectPayloadType(body: string): 'speedtest' | 'sdwan_members' | 'sdwan_status' | 'sdwan_combined' | 'unknown' {
+export function detectPayloadType(body: string): 'speedtest' | 'sdwan_members' | 'sdwan_status' | 'sdwan_combined' | 'sdwan_json' | 'unknown' {
+  // FortiGate CLI format
   const hasMembers = /config\s+members/.test(body) && /set\s+interface/.test(body);
   const hasStatus  = /sdwan_mbr_seq=/.test(body);
   if (hasMembers && hasStatus) return 'sdwan_combined';
   if (hasStatus)  return 'sdwan_status';
   if (hasMembers) return 'sdwan_members';
   if (/up_speed:|down_speed:|execute\s+speed-test-ipsec|upload[_\-]?speed|download[_\-]?speed/i.test(body)) return 'speedtest';
+  // FortiGate SDWAN komut satırı (çıktısız) — "DEVICE diagnose sys session list | grep sdwan"
+  //                                            "DEVICE show system sdwan"
+  if (/diagnose\s+sys\s+session.*sdwan|show\s+system\s+sdwan/i.test(body)) return 'sdwan_status';
+  // JSON format: {"deviceName":"...","members":[...],...} veya {"sdwan":{...}}
+  try {
+    const j = JSON.parse(body);
+    if (j && (Array.isArray(j.members) || j.sdwan || j.sdwan_members)) return 'sdwan_json';
+  } catch { /* not JSON */ }
   return 'unknown';
+}
+
+/** JSON formatındaki SDWAN payload'ını parse et.
+ *  Desteklenen formatlar:
+ *  { deviceName, members:[{seqId,interfaceName,cost?}], activeMemberSeq? }
+ *  { device, members:[{seq,iface,cost?}], activeSeq? }
+ */
+export function parseSdwanJson(body: string): {
+  deviceName: string | null;
+  members: { seqId: number; interfaceName: string; cost: number | null }[];
+  activeMemberSeq: number | null;
+} {
+  try {
+    const j = JSON.parse(body);
+    const deviceName: string | null = j.deviceName ?? j.device ?? j.devname ?? null;
+    const activeMemberSeq: number | null =
+      j.activeMemberSeq ?? j.activeSeq ?? j.active_seq ?? j.sdwan_mbr_seq ?? null;
+
+    const rawMembers: any[] = j.members ?? j.sdwan_members ?? [];
+    const members = rawMembers.map((m: any) => ({
+      seqId: Number(m.seqId ?? m.seq ?? m.seq_id ?? m.id ?? 0),
+      interfaceName: String(m.interfaceName ?? m.iface ?? m.interface ?? m.name ?? ''),
+      cost: m.cost != null ? Number(m.cost) : null,
+    })).filter(m => m.seqId > 0 && m.interfaceName);
+
+    return { deviceName, members, activeMemberSeq };
+  } catch {
+    return { deviceName: null, members: [], activeMemberSeq: null };
+  }
 }
 
 export interface SdwanMemberEntry { seqId: number; interfaceName: string; cost: number | null; }

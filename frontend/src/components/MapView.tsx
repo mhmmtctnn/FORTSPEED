@@ -3,7 +3,7 @@ import { FilterCombobox } from './FilterCombobox';
 import Map, { Marker, NavigationControl, Popup, MapRef, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck, GitBranch } from 'lucide-react';
+import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck, GitBranch, Satellite, Zap } from 'lucide-react';
 import { Mission, StatPoint, FilterOptions, VpnTab, SdwanRow, getMarkerColor, getQualityClass, getQualityLabel } from '../types';
 
 interface Props {
@@ -19,6 +19,7 @@ interface Props {
   filteredMissions: Mission[];
   showFlags: boolean;
   showHeatmap: boolean;
+  showArcs: boolean;
   theme?: 'dark' | 'light';
   merkezFW: { lat: number; lon: number; name: string };
   sdwanData?: SdwanRow[];
@@ -85,11 +86,50 @@ function greatCircleArc(
 
 export default function MapView({
   missions, selectedMission, statsGsm, statsMetro, statsHub, selectedVpnTab, popupInfo,
-  filterOptions, mapFilter, filteredMissions, showFlags, showHeatmap, theme, merkezFW,
+  filterOptions, mapFilter, filteredMissions, showFlags, showHeatmap, showArcs, theme, merkezFW,
   sdwanData,
   onMarkerClick, onClearSelection, onSetPopup, onSetVpnTab, onMapFilterChange,
 }: Props) {
   const [vpnMapFilter, setVpnMapFilter] = useState<'GSM' | 'METRO' | 'HUB' | null>(null);
+  const [satelliteFilter, setSatelliteFilter] = useState<'starlink' | 'turksat' | null>(null);
+  const [speedFilter, setSpeedFilter] = useState<'excellent' | 'good' | 'poor' | 'nodata' | null>(null);
+  const [openFilterPanel, setOpenFilterPanel] = useState<'connection' | 'speed' | null>(null);
+
+  const SAT_OPTIONS = [
+    { value: 'starlink' as const, label: 'Starlink', hex: '#06b6d4' },
+    { value: 'turksat'  as const, label: 'Türksat',  hex: '#dc2626' },
+  ];
+
+  const getSatType = (m: Mission) => m.satellite_type ?? null;
+
+  const getSatIcon = (type: 'starlink' | 'turksat', sz = 10) => {
+    if (type === 'starlink') return (
+      <svg width={sz} height={sz} viewBox="0 0 20 20" fill="none">
+        {/* Orbital rings — Starlink constellation */}
+        <circle cx="10" cy="10" r="3.5" fill="#fff"/>
+        <ellipse cx="10" cy="10" rx="9" ry="4" stroke="#fff" strokeWidth="1.8" fill="none"/>
+        <ellipse cx="10" cy="10" rx="4" ry="9" stroke="#fff" strokeWidth="1.8" fill="none"/>
+      </svg>
+    );
+    return (
+      <svg width={sz} height={sz} viewBox="0 0 20 20" fill="none">
+        {/* Hilal + yıldız — Türksat / Türk bayrağı */}
+        <path d="M12.6,4.75 A7,7,0,1,0,12.6,15.25 A5.5,5.5,0,0,1,12.6,4.75 Z" fill="#fff"/>
+        <circle cx="17" cy="8" r="2" fill="#fff"/>
+      </svg>
+    );
+  };
+
+  const getBestSpeed = (m: Mission) =>
+    Math.max(Number(m.gsm_download ?? 0), Number(m.metro_download ?? 0), Number(m.hub_download ?? 0));
+
+  const getSpeedTier = (m: Mission): 'excellent' | 'good' | 'poor' | 'nodata' => {
+    const best = getBestSpeed(m);
+    if (best <= 0) return 'nodata';
+    if (best >= 60) return 'excellent';
+    if (best >= 30) return 'good';
+    return 'poor';
+  };
 
   const sdwanByCity = useMemo(() => {
     const obj: Record<number, SdwanRow> = {};
@@ -97,16 +137,32 @@ export default function MapView({
     return obj;
   }, [sdwanData]);
 
-  // VPN tipi overlay filtresine göre misyonları daralt
+  const guessIfaceType = (iface: string | null): 'GSM' | 'HUB' | 'METRO' | null => {
+    if (!iface) return null;
+    const u = iface.toUpperCase();
+    if (/GSM|LTE|4G|5G|CELL|MOBILE/.test(u)) return 'GSM';
+    if (/\bHUB\b|_HUB|HUB_/.test(u)) return 'HUB';
+    if (/METRO|MPLS|FIBER|LEASED|KARASAL/.test(u)) return 'METRO';
+    return null;
+  };
+
   const mapFilteredMissions = useMemo(() => {
-    if (!vpnMapFilter) return filteredMissions;
-    return filteredMissions.filter(m => {
-      if (vpnMapFilter === 'GSM')   return m.gsm_download != null || m.gsm_upload != null;
-      if (vpnMapFilter === 'METRO') return m.metro_download != null || m.metro_upload != null;
-      if (vpnMapFilter === 'HUB')   return m.hub_download != null || m.hub_upload != null;
-      return true;
-    });
-  }, [filteredMissions, vpnMapFilter]);
+    let result = filteredMissions;
+    if (vpnMapFilter) {
+      result = result.filter(m => {
+        const sdwan = sdwanByCity[m.id];
+        if (!sdwan?.active_interface) return false;
+        return guessIfaceType(sdwan.active_interface) === vpnMapFilter;
+      });
+    }
+    if (satelliteFilter) {
+      result = result.filter(m => getSatType(m) === satelliteFilter);
+    }
+    if (speedFilter) {
+      result = result.filter(m => getSpeedTier(m) === speedFilter);
+    }
+    return result;
+  }, [filteredMissions, vpnMapFilter, satelliteFilter, speedFilter, sdwanByCity]);
 
   const activeStats = selectedVpnTab === 'GSM' ? statsGsm : selectedVpnTab === 'HUB' ? statsHub : statsMetro;
   const mapRef = useRef<MapRef>(null);
@@ -139,8 +195,9 @@ export default function MapView({
   const heatmapData = useMemo(() => {
     return {
       type: 'FeatureCollection',
-      features: filteredMissions.filter(m => Number.isFinite(Number(m.lat)) && Number.isFinite(Number(m.lon))).map(m => {
-        const speed = Math.max(Number(m.gsm_download) || 0, Number(m.metro_download) || 0);
+      features: mapFilteredMissions.filter(m => Number.isFinite(Number(m.lat)) && Number.isFinite(Number(m.lon))).map(m => {
+        // getMarkerColor ile aynı mantık: gsm + metro + hub max
+        const speed = Math.max(Number(m.gsm_download) || 0, Number(m.metro_download) || 0, Number(m.hub_download) || 0);
         return {
           type: 'Feature',
           properties: { speed, id: m.id },
@@ -148,21 +205,22 @@ export default function MapView({
         };
       })
     };
-  }, [filteredMissions]);
+  }, [mapFilteredMissions]);
 
-  // 4 hız grubuna göre ayrı GeoJSON kaynakları
+  // Marker renk sistemiyle tam eşleşen 3 tier
+  // getMarkerColor: <30=red, 30-60=amber, ≥60=green  (types.ts ile aynı eşikler)
   const SPEED_TIERS = [
-    { id: 'slow',      min: 0,  max: 5,       color: '#ef4444' }, // kırmızı — çok yavaş
-    { id: 'medium',    min: 5,  max: 20,       color: '#f59e0b' }, // amber — yavaş
-    { id: 'good',      min: 20, max: 50,       color: '#22c55e' }, // yeşil — iyi
-    { id: 'excellent', min: 50, max: Infinity, color: '#38bdf8' }, // mavi — mükemmel
+    { id: 'poor',      min: 0,  max: 30,       color: '#ef4444' }, // kırmızı — zayıf
+    { id: 'good',      min: 30, max: 60,       color: '#f97316' }, // turuncu — iyi
+    { id: 'excellent', min: 60, max: Infinity, color: '#38bdf8' }, // açık mavi — mükemmel
   ] as const;
 
   const arcByTier = useMemo(() => {
-    const base = filteredMissions
+    const base = mapFilteredMissions
       .filter(m => Number.isFinite(Number(m.lat)) && Number.isFinite(Number(m.lon)))
       .map(m => {
-        const speed = Math.max(Number(m.gsm_download) || 0, Number(m.metro_download) || 0);
+        // hub_download da dahil — marker'daki getBestDownload ile aynı mantık
+        const speed = Math.max(Number(m.gsm_download) || 0, Number(m.metro_download) || 0, Number(m.hub_download) || 0);
         const coords = greatCircleArc(
           [Number(m.lon), Number(m.lat)],
           [merkezFW.lon, merkezFW.lat]
@@ -183,7 +241,7 @@ export default function MapView({
           })),
       },
     }));
-  }, [filteredMissions, merkezFW]);
+  }, [mapFilteredMissions, merkezFW]);
 
   // arc-dot kaynakları için stabil boş GeoJSON referansı
   // (her render'da yeni obje oluşursa react-map-gl setData çağırır ve animasyon sıfırlanır)
@@ -208,16 +266,14 @@ export default function MapView({
     const TAIL = 12; // parlak kuyruk uzunluğu (koordinat sayısı)
 
     // cyclePeriod: misyon→merkezFW arasında tek tur süresi (ms)
-    // İnsan gözünün rahatça takip edebileceği hızlar:
-    //   slow      → ağır, labored (4s)
-    //   medium    → sabit akış   (2.5s)
-    //   good      → hızlı akış   (1.5s)
-    //   excellent → çok hızlı    (0.8s)
+    // Hız arttıkça animasyon hızlanır — renk sistemiyle tutarlı
+    //   poor      → ağır (3.5s)  — kırmızı, yavaş
+    //   good      → orta (2.0s)  — amber
+    //   excellent → hızlı (0.9s) — yeşil, hızlı
     const tiers = [
-      { id: 'slow',      cyclePeriod: 4000 },
-      { id: 'medium',    cyclePeriod: 2500 },
-      { id: 'good',      cyclePeriod: 1500 },
-      { id: 'excellent', cyclePeriod:  800 },
+      { id: 'poor',      cyclePeriod: 3500 },
+      { id: 'good',      cyclePeriod: 2000 },
+      { id: 'excellent', cyclePeriod:  900 },
     ];
 
     const animate = () => {
@@ -260,14 +316,30 @@ export default function MapView({
       rafRef.current = requestAnimationFrame(animate);
     };
 
+    if (!showArcs) {
+      // Arc kapalıysa dot kaynaklarını temizle
+      const map = mapRef.current?.getMap();
+      if (map) {
+        ['poor', 'good', 'excellent'].forEach(id => {
+          try {
+            const src = map.getSource(`arc-dot-src-${id}`) as any;
+            if (src?.setData) src.setData({ type: 'FeatureCollection', features: [] });
+          } catch { /* kaynak henüz yok */ }
+        });
+      }
+      return;
+    }
+
     rafRef.current = requestAnimationFrame(animate);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, []);
+  }, [showArcs]);
 
   const handleContinentChange = (continent: string) => {
     onMapFilterChange({ continent, country: '', mission: '' });
     onSetPopup(null);
-    // Kıta seçilince harita o bölgeye genel zoom yapar — otomatik misyon seçimi yapılmaz
+    setVpnMapFilter(null);
+    setSatelliteFilter(null);
+    setSpeedFilter(null);
     if (continent) {
       const bbox = CONTINENT_BBOX[continent];
       if (bbox && mapRef.current) {
@@ -566,6 +638,9 @@ export default function MapView({
                   : mapFilter.continent;
                 onMapFilterChange({ ...mapFilter, continent, country, mission: '' });
                 onSetPopup(null);
+                setVpnMapFilter(null);
+                setSatelliteFilter(null);
+                setSpeedFilter(null);
                 if (country) {
                   const ref = missions.find(m => m.country === country && m.name !== 'MERKEZ_FW');
                   if (ref) {
@@ -587,6 +662,9 @@ export default function MapView({
               const country   = m?.country   ?? mapFilter.country;
               onMapFilterChange({ continent, country, mission: missionId });
               onSetPopup(null);
+              setVpnMapFilter(null);
+              setSatelliteFilter(null);
+              setSpeedFilter(null);
               if (m) {
                 onMarkerClick(m);
                 mapRef.current?.flyTo({ center: [Number(m.lon), Number(m.lat)], zoom: 6 });
@@ -600,7 +678,7 @@ export default function MapView({
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{filteredMissions.length} misyon gösteriliyor</span>
             {(mapFilter.continent || mapFilter.country || mapFilter.mission) && (
               <button
-                onClick={() => { onMapFilterChange({ continent: '', country: '', mission: '' }); onSetPopup(null); }}
+                onClick={() => { onMapFilterChange({ continent: '', country: '', mission: '' }); onSetPopup(null); setVpnMapFilter(null); setSatelliteFilter(null); setSpeedFilter(null); }}
                 style={{ fontSize: '0.7rem', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
               >
                 Filtreyi Temizle
@@ -652,8 +730,16 @@ export default function MapView({
                     </div>
                   ))}
                 </div>
-                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
                   {selectedMission.gsm_device && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}><HardDrive size={10}/>{selectedMission.gsm_device}</span>}
+                  {getSatType(selectedMission) && (() => {
+                    const sat = SAT_OPTIONS.find(o => o.value === getSatType(selectedMission));
+                    return sat ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', fontWeight: 700, color: sat.hex, background: `${sat.hex}1e`, border: `1px solid ${sat.hex}59`, borderRadius: 4, padding: '2px 6px' }}>
+                        {getSatIcon(sat.value, 11)} {sat.label}
+                      </span>
+                    ) : null;
+                  })()}
                   <span className={`quality-pill ${getQualityClass(selectedMission.gsm_download)}`} style={{ marginLeft: 'auto' }}>{getQualityLabel(selectedMission.gsm_download)}</span>
                 </div>
               </div>
@@ -803,14 +889,15 @@ export default function MapView({
             ? "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
             : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"}
           onClick={() => {
-            // Haritanın boş alanına tıklanınca seçimi kaldır
             if (selectedMission) onClearSelection();
+            onSetPopup(null);
+            setOpenFilterPanel(null);
           }}
         >
           <NavigationControl position="top-right"/>
           
           {/* ── Arc Lines: sabit arka plan çizgisi ── */}
-          {arcByTier.map(({ tier, geojson }) => (
+          {showArcs && arcByTier.map(({ tier, geojson }) => (
             <Source key={tier.id} id={`arc-src-${tier.id}`} type="geojson" data={geojson as any}>
               {/* Gölge / halo */}
               <Layer
@@ -819,9 +906,9 @@ export default function MapView({
                 paint={{
                   'line-color': tier.color,
                   'line-width': 1.2,
-                  'line-opacity': selectedMission 
+                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter)
                     ? ['case', ['==', ['get', 'id'], selectedMission.id], 0.7, 0.05]
-                    : (tier.id === 'slow' ? 0.60 : tier.id === 'medium' ? 0.35 : 0.1),
+                    : (tier.id === 'poor' ? 0.60 : tier.id === 'good' ? 0.40 : 0.25),
                   'line-blur': 5,
                 }}
               />
@@ -832,9 +919,9 @@ export default function MapView({
                 paint={{
                   'line-color': tier.color,
                   'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.6, 4, 1.0, 7, 1.5],
-                  'line-opacity': selectedMission 
+                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter)
                     ? ['case', ['==', ['get', 'id'], selectedMission.id], 0.9, 0.1]
-                    : (tier.id === 'slow' ? 0.75 : tier.id === 'medium' ? 0.55 : 0.3),
+                    : (tier.id === 'poor' ? 0.75 : tier.id === 'good' ? 0.55 : 0.35),
                   'line-dasharray': [2, 5],
                 }}
               />
@@ -842,7 +929,7 @@ export default function MapView({
           ))}
           {/* ── Akan parlak dot — GeoJSON segment (zoom BAĞIMSIZ) ── */}
           {/* dasharray yerine gerçek koordinat segmenti: zoom'da asla bozulmaz */}
-          {arcByTier.map(({ tier }) => (
+          {showArcs && arcByTier.map(({ tier }) => (
             <Source
               key={`dot-${tier.id}`}
               id={`arc-dot-src-${tier.id}`}
@@ -856,9 +943,9 @@ export default function MapView({
                 paint={{
                   'line-color': tier.color,
                   'line-width': ['interpolate', ['linear'], ['zoom'], 1, 2, 4, 3.5, 7, 5],
-                  'line-opacity': selectedMission 
-                    ? ['case', ['==', ['get', 'id'], selectedMission.id], 1.0, 0] 
-                    : (tier.id === 'slow' ? 1.0 : tier.id === 'medium' ? 0.8 : 0.4),
+                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter)
+                    ? ['case', ['==', ['get', 'id'], selectedMission.id], 1.0, 0]
+                    : (tier.id === 'poor' ? 1.0 : tier.id === 'good' ? 0.85 : 0.7),
                   'line-blur': 0.4,
                 }}
               />
@@ -925,8 +1012,8 @@ export default function MapView({
                     'interpolate', ['linear'], ['heatmap-density'],
                     0, 'rgba(0, 0, 255, 0)',
                     0.2, '#3b82f6',
-                    0.5, '#22c55e',
-                    0.8, '#f59e0b',
+                    0.5, '#38bdf8',
+                    0.8, '#f97316',
                     1, '#ef4444'
                   ],
                   'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 10, 9, 30],
@@ -937,33 +1024,91 @@ export default function MapView({
           )}
 
           {mapFilteredMissions.map(m => {
-            const color = getMarkerColor(m);
+            const speedColor = getMarkerColor(m);
             const selected = selectedMission?.id === m.id;
+            const satType = getSatType(m);
+            const satOpt = satType ? SAT_OPTIONS.find(o => o.value === satType) : null;
+
+            // When satellite filter active, use satellite color; otherwise speed-based color
+            const color = satelliteFilter && satOpt ? satOpt.hex : speedColor;
+
+            const anyFilter = !!(vpnMapFilter || satelliteFilter);
+            const size = selected ? 22 : anyFilter ? 16 : 12;
+
             return (
               <Marker key={m.id} longitude={Number(m.lon)} latitude={Number(m.lat)}
                 anchor="center"
                 onClick={e => { e.originalEvent.stopPropagation(); onMarkerClick(m); }}
                 style={{ zIndex: selected ? 10 : 1 }}
               >
-                <div style={{
-                  width: selected ? '20px' : '12px',
-                  height: selected ? '20px' : '12px',
-                  background: color,
-                  borderRadius: '50%',
-                  border: selected ? '3px solid white' : '2px solid rgba(255,255,255,0.8)',
-                  cursor: 'pointer',
-                  boxShadow: selected ? `0 0 16px ${color}, 0 0 32px ${color}` : `0 0 6px ${color}66`,
-                  transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
-                  opacity: selected ? 1 : (selectedMission ? 0.3 : 0.9), // Tüm noktalar daha görünür (anlaşılır)
-                }} className={!selected && (color === '#ef4444' || color === '#f59e0b') && !selectedMission ? 'marker-pulse' : ''}/>
+                {/* Satellite marker: show prominent badge when not in filter mode */}
+                {satOpt && !satelliteFilter ? (
+                  <div style={{
+                    position: 'relative', cursor: 'pointer',
+                    width: `${size + 8}px`, height: `${size + 8}px`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+                    opacity: selected ? 1 : (selectedMission && !anyFilter ? 0.3 : 1),
+                  }}>
+                    {/* Ana hız rengi daire */}
+                    <div style={{
+                      width: `${size}px`, height: `${size}px`,
+                      background: speedColor, borderRadius: '50%',
+                      border: selected ? '3px solid white' : '2px solid rgba(255,255,255,0.8)',
+                      boxShadow: selected ? `0 0 16px ${speedColor}, 0 0 32px ${speedColor}` : `0 0 6px ${speedColor}66`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }} />
+                    {/* Belirgin uydu rozeti — özel ikon */}
+                    <div style={{
+                      position: 'absolute', top: -8, right: -8,
+                      display: 'flex', alignItems: 'center', gap: 2,
+                      background: satOpt.hex, border: '2px solid #fff',
+                      borderRadius: 12, padding: '3px 6px',
+                      boxShadow: `0 2px 10px ${satOpt.hex}bb, 0 0 0 1px ${satOpt.hex}44`,
+                    }}>
+                      {getSatIcon(satOpt.value, 11)}
+                      <span style={{ fontSize: '0.52rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '0.02em' }}>
+                        {satOpt.value === 'starlink' ? 'SL' : 'TK'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    width: `${size}px`, height: `${size}px`,
+                    background: color, borderRadius: '50%',
+                    border: selected ? '3px solid white' : anyFilter ? '2px solid white' : '2px solid rgba(255,255,255,0.8)',
+                    cursor: 'pointer',
+                    boxShadow: selected
+                      ? `0 0 16px ${color}, 0 0 32px ${color}`
+                      : anyFilter
+                        ? `0 0 10px ${color}aa, 0 0 20px ${color}55`
+                        : `0 0 6px ${color}66`,
+                    transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+                    opacity: selected ? 1 : (selectedMission && !anyFilter ? 0.3 : 1),
+                    display: satelliteFilter ? 'flex' : 'block',
+                    alignItems: 'center', justifyContent: 'center',
+                  }} className={!selected && !anyFilter && (speedColor === '#ef4444' || speedColor === '#f97316') && !selectedMission ? 'marker-pulse' : ''}>
+                    {satelliteFilter && getSatIcon(satelliteFilter, Math.round(size * 0.55))}
+                  </div>
+                )}
               </Marker>
             );
           })}
           {popupInfo && (
             <Popup longitude={popupInfo.lon} latitude={popupInfo.lat} anchor="bottom" onClose={() => onSetPopup(null)} closeButton>
-              <div style={{ padding: '12px 14px', minWidth: '180px' }}>
+              <div style={{ padding: '12px 14px', minWidth: '200px' }}>
                 <div style={{ fontWeight: 800, color: 'var(--accent)', marginBottom: '8px', fontSize: '0.85rem' }}>{popupInfo.name}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--purple)', fontWeight: 700, marginBottom: '3px' }}>📶 GSM</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: '3px' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--purple)', fontWeight: 700 }}>📶 GSM</span>
+                  {(() => {
+                    const sat = SAT_OPTIONS.find(o => o.value === getSatType(popupInfo));
+                    return sat ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: '0.6rem', fontWeight: 700, color: sat.hex, background: `${sat.hex}26`, border: `1px solid ${sat.hex}4d`, borderRadius: 3, padding: '1px 4px' }}>
+                        {getSatIcon(sat.value, 10)} {sat.label}
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
                 <div style={{ fontSize: '0.75rem', marginBottom: '6px' }}>
                   ↓ <b>{popupInfo.gsm_download != null ? Number(popupInfo.gsm_download).toFixed(1) : '–'}</b> / ↑ <b>{popupInfo.gsm_upload != null ? Number(popupInfo.gsm_upload).toFixed(1) : '–'}</b> Mbps · ⏱ {popupInfo.gsm_latency != null ? Number(popupInfo.gsm_latency).toFixed(0) : '–'} ms
                 </div>
@@ -988,90 +1133,153 @@ export default function MapView({
           )}
         </Map>
 
-        {/* ── VPN Tipi Filtre (sağ alt köşe) ── */}
-        <div style={{
-          position: 'absolute', bottom: 24, right: 16,
-          zIndex: 20, pointerEvents: 'none',
-        }}>
-          <div className="glass-card" style={{
-            pointerEvents: 'auto',
-            padding: '8px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            minWidth: 130,
-          }}>
-            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0 4px 4px', borderBottom: '1px solid var(--border)' }}>
-              Bağlantı Tipi
-            </div>
-            {([
-              { key: 'GSM'   as const, label: 'GSM',     Icon: Signal,    color: 'var(--purple)' },
-              { key: 'METRO' as const, label: 'Karasal', Icon: Wifi,      color: 'var(--accent)' },
-              { key: 'HUB'   as const, label: 'Hub',     Icon: GitBranch, color: 'var(--green)'  },
-            ] as const).map(({ key, label, Icon, color }) => {
-              const isActive = vpnMapFilter === key;
-              return (
+        {/* ── Kenar Filtre Toolbar (Yandex Maps tarzı) ── */}
+        <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
+
+          {/* Aktif Hat butonu */}
+          {(() => {
+            const connectionActive = !!(vpnMapFilter || satelliteFilter);
+            const open = openFilterPanel === 'connection';
+            return (
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                {/* Açılan panel — solda */}
+                {open && (
+                  <div style={{
+                    position: 'absolute', right: 46, top: '50%', transform: 'translateY(-50%)',
+                    background: 'var(--glass-bg)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+                    border: '1px solid var(--border)', borderRadius: 12,
+                    padding: '10px 12px', boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+                    display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160,
+                    animation: 'fadeIn 0.15s ease',
+                  }}>
+                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Aktif Hat (SDWAN)</span>
+                    {([
+                      { key: 'GSM'   as const, label: 'GSM',     Icon: Signal,    hex: '#a855f7' },
+                      { key: 'METRO' as const, label: 'Karasal', Icon: Wifi,      hex: '#38bdf8' },
+                      { key: 'HUB'   as const, label: 'Hub',     Icon: GitBranch, hex: '#06b6d4' },
+                    ] as const).map(({ key, label, Icon, hex }) => {
+                      const isActive = vpnMapFilter === key;
+                      return (
+                        <button key={key} onClick={() => setVpnMapFilter(p => p === key ? null : key)} style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '6px 10px', borderRadius: 8,
+                          background: isActive ? `${hex}22` : 'transparent',
+                          border: `1px solid ${isActive ? `${hex}88` : 'transparent'}`,
+                          color: isActive ? hex : 'var(--text-secondary)',
+                          fontWeight: isActive ? 700 : 400, fontSize: '0.78rem',
+                          cursor: 'pointer', transition: 'all 0.12s', textAlign: 'left',
+                        }}>
+                          <Icon size={13} style={{ flexShrink: 0 }} />
+                          <span style={{ flex: 1 }}>{label}</span>
+                          {isActive && <span style={{ background: hex, color: '#fff', borderRadius: 99, fontSize: '0.6rem', fontWeight: 800, padding: '1px 6px' }}>{mapFilteredMissions.length}</span>}
+                        </button>
+                      );
+                    })}
+                    <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
+                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Uydu Bağlantısı</span>
+                    {SAT_OPTIONS.map(opt => {
+                      const isActive = satelliteFilter === opt.value;
+                      const cnt = filteredMissions.filter(m => getSatType(m) === opt.value).length;
+                      return (
+                        <button key={opt.value} onClick={() => setSatelliteFilter(p => p === opt.value ? null : opt.value)} style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '6px 10px', borderRadius: 8,
+                          background: isActive ? `${opt.hex}22` : 'transparent',
+                          border: `1px solid ${isActive ? `${opt.hex}88` : 'transparent'}`,
+                          color: isActive ? opt.hex : 'var(--text-secondary)',
+                          fontWeight: isActive ? 700 : 400, fontSize: '0.78rem',
+                          cursor: 'pointer', transition: 'all 0.12s',
+                        }}>
+                          <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', filter: isActive ? 'none' : 'opacity(0.5)' }}>
+                            {/* Renkli mini ikon kutusu */}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 5, background: opt.hex }}>
+                              {getSatIcon(opt.value, 12)}
+                            </span>
+                          </span>
+                          <span style={{ flex: 1 }}>{opt.label}</span>
+                          <span style={{ background: isActive ? opt.hex : 'var(--bg-elevated)', color: isActive ? '#fff' : 'var(--text-muted)', borderRadius: 99, fontSize: '0.6rem', fontWeight: 800, padding: '1px 6px' }}>{cnt}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* İkon butonu */}
                 <button
-                  key={key}
-                  onClick={() => setVpnMapFilter(prev => prev === key ? null : key)}
-                  title={`${label} misyonlarını filtrele`}
+                  onClick={() => setOpenFilterPanel(p => p === 'connection' ? null : 'connection')}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '6px 8px',
-                    background: isActive
-                      ? color === 'var(--purple)' ? 'rgba(168,85,247,0.15)'
-                      : color === 'var(--accent)'  ? 'rgba(56,189,248,0.15)'
-                      : 'rgba(34,197,94,0.15)'
-                      : 'transparent',
-                    border: `1px solid ${isActive ? color : 'transparent'}`,
-                    borderRadius: 'var(--radius-sm)',
-                    color: isActive ? color : 'var(--text-secondary)',
-                    fontWeight: isActive ? 700 : 400,
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    width: '100%',
-                    textAlign: 'left',
-                  }}
-                >
-                  <Icon size={13} />
-                  <span style={{ flex: 1 }}>{label}</span>
-                  {isActive && (
-                    <span style={{
-                      background: color,
-                      color: '#fff',
-                      borderRadius: 99,
-                      fontSize: '0.6rem',
-                      fontWeight: 800,
-                      padding: '1px 6px',
-                      minWidth: 18,
-                      textAlign: 'center',
-                    }}>
-                      {mapFilteredMissions.length}
-                    </span>
-                  )}
+                    width: 36, height: 36, borderRadius: 8, border: `1.5px solid ${connectionActive ? 'var(--accent)' : open ? 'var(--border-light)' : 'var(--border)'}`,
+                    background: connectionActive ? 'rgba(56,189,248,0.15)' : open ? 'var(--bg-elevated)' : 'var(--glass-bg)',
+                    backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+                    color: connectionActive ? 'var(--accent)' : open ? 'var(--text-secondary)' : 'var(--text-muted)',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)', position: 'relative', flexShrink: 0,
+                  }}>
+                  <GitBranch size={16} />
+                  {connectionActive && <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', border: '1.5px solid var(--bg-base)' }} />}
                 </button>
-              );
-            })}
-            {vpnMapFilter && (
-              <button
-                onClick={() => setVpnMapFilter(null)}
-                style={{
-                  marginTop: 2,
-                  padding: '4px 8px',
-                  background: 'transparent',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  color: 'var(--text-muted)',
-                  fontSize: '0.68rem',
-                  cursor: 'pointer',
-                  width: '100%',
-                }}
-              >
-                Filtreyi Kaldır
-              </button>
-            )}
-          </div>
+              </div>
+            );
+          })()}
+
+          {/* Hız filtresi butonu */}
+          {(() => {
+            const speedActive = !!speedFilter;
+            const open = openFilterPanel === 'speed';
+            const speedColor = speedFilter === 'excellent' ? '#38bdf8' : speedFilter === 'good' ? '#f97316' : speedFilter === 'poor' ? '#ef4444' : '#6b7280';
+            return (
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                {open && (
+                  <div style={{
+                    position: 'absolute', right: 46, top: '50%', transform: 'translateY(-50%)',
+                    background: 'var(--glass-bg)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+                    border: '1px solid var(--border)', borderRadius: 12,
+                    padding: '10px 12px', boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+                    display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160,
+                    animation: 'fadeIn 0.15s ease',
+                  }}>
+                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Hız Filtresi</span>
+                    {([
+                      { key: 'excellent' as const, label: 'Mükemmel', sub: '≥ 60 Mbps', hex: '#38bdf8' },
+                      { key: 'good'      as const, label: 'İyi',       sub: '30–60 Mbps', hex: '#f97316' },
+                      { key: 'poor'      as const, label: 'Zayıf',     sub: '< 30 Mbps',  hex: '#ef4444' },
+                      { key: 'nodata'    as const, label: 'Veri Yok',  sub: '—',           hex: '#6b7280' },
+                    ] as const).map(({ key, label, hex }) => {
+                      const isActive = speedFilter === key;
+                      const count = filteredMissions.filter(m => getSpeedTier(m) === key).length;
+                      return (
+                        <button key={key} onClick={() => setSpeedFilter(p => p === key ? null : key)} style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '6px 10px', borderRadius: 8,
+                          background: isActive ? `${hex}22` : 'transparent',
+                          border: `1px solid ${isActive ? `${hex}88` : 'transparent'}`,
+                          color: isActive ? hex : 'var(--text-secondary)',
+                          fontWeight: isActive ? 700 : 400, fontSize: '0.78rem',
+                          cursor: 'pointer', transition: 'all 0.12s', textAlign: 'left',
+                        }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: hex, flexShrink: 0, display: 'inline-block' }} />
+                          <span style={{ flex: 1 }}>{label}</span>
+                          <span style={{ fontSize: '0.65rem', color: isActive ? hex : 'var(--text-muted)' }}>{isActive ? mapFilteredMissions.length : count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <button
+                  onClick={() => setOpenFilterPanel(p => p === 'speed' ? null : 'speed')}
+                  style={{
+                    width: 36, height: 36, borderRadius: 8, border: `1.5px solid ${speedActive ? speedColor : open ? 'var(--border-light)' : 'var(--border)'}`,
+                    background: speedActive ? `${speedColor}22` : open ? 'var(--bg-elevated)' : 'var(--glass-bg)',
+                    backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+                    color: speedActive ? speedColor : open ? 'var(--text-secondary)' : 'var(--text-muted)',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)', position: 'relative', flexShrink: 0,
+                  }}>
+                  <Zap size={16} />
+                  {speedActive && <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: speedColor, border: '1.5px solid var(--bg-base)' }} />}
+                </button>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </>

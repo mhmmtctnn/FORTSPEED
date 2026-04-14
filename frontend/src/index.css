@@ -38,10 +38,10 @@
   /* Glass card & table overrides */
   --glass-bg: rgba(17,24,39,0.7);
   --table-head-bg: rgba(6,11,23,0.8);
-  --quality-excellent-bg: rgba(34,197,94,0.15);
-  --quality-excellent-txt: #4ade80;
-  --quality-good-bg: rgba(245,158,11,0.15);
-  --quality-good-txt: #fbbf24;
+  --quality-excellent-bg: rgba(56,189,248,0.15);
+  --quality-excellent-txt: #38bdf8;
+  --quality-good-bg: rgba(249,115,22,0.15);
+  --quality-good-txt: #fb923c;
   --quality-poor-bg: rgba(239,68,68,0.15);
   --quality-poor-txt: #f87171;
   --quality-none-bg: rgba(100,116,139,0.15);
@@ -85,10 +85,10 @@
   /* Glass card & table overrides â€” light */
   --glass-bg: rgba(255,255,255,0.85);
   --table-head-bg: #f1f5fb;
-  --quality-excellent-bg: rgba(5,150,105,0.12);
-  --quality-excellent-txt: #059669;
-  --quality-good-bg: rgba(217,119,6,0.12);
-  --quality-good-txt: #d97706;
+  --quality-excellent-bg: rgba(14,165,233,0.12);
+  --quality-excellent-txt: #0ea5e9;
+  --quality-good-bg: rgba(234,88,12,0.12);
+  --quality-good-txt: #ea580c;
   --quality-poor-bg: rgba(220,38,38,0.12);
   --quality-poor-txt: #dc2626;
   --quality-none-bg: rgba(100,116,139,0.1);
@@ -372,6 +372,9 @@ select.form-control { cursor: pointer; }
 .fade-in { animation: fade-in 0.4s ease; }
 
 /* Popup style overrides */
+.maplibregl-popup {
+  z-index: 200 !important;
+}
 .maplibregl-popup-content {
   background: var(--glass-bg) !important;
   backdrop-filter: blur(12px) !important;

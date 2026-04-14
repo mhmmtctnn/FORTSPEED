@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Globe, TrendingUp, Wifi, Activity, Clock, MapPin, Zap, Calendar, X } from 'lucide-react';
 import { Mission, ActivityEntry, fmt, getBestDownload, getBestUpload } from '../types';
@@ -25,7 +25,11 @@ const QUICK = [
   { label: 'Tümü',    fn: () => ({ startDate: '', endDate: '' }) },
 ];
 
-const CONTINENT_COLORS = ['#38bdf8','#22c55e','#a855f7','#f59e0b','#ef4444','#06b6d4','#84cc16','#f97316'];
+const CONTINENT_COLORS = ['#38bdf8','#a855f7','#f97316','#f59e0b','#ef4444','#06b6d4','#84cc16','#e879f9'];
+
+// VPN tipi → renk (harita/rapor renkleriyle tutarlı)
+const VPN_COLOR: Record<string, string> = { GSM: '#a855f7', METRO: '#38bdf8', HUB: '#06b6d4' };
+const vpnColor = (vpnType: string) => VPN_COLOR[vpnType?.toUpperCase()] ?? '#38bdf8';
 
 const DATA_MIN = '2025-08-19'; // SpeedStats'daki en erken kayıt
 
@@ -55,40 +59,31 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
     onLoadDashboard(range);
   };
 
-  const topMissions = [...missions]
+  const topMissions = useMemo(() => [...missions]
     .filter(m => (topMetric === 'download' ? getBestDownload(m) : getBestUpload(m)) > 0)
     .sort((a, b) => (topMetric === 'download' ? getBestDownload(b) - getBestDownload(a) : getBestUpload(b) - getBestUpload(a)))
-    .slice(0, 10);
+    .slice(0, 10), [missions, topMetric]);
 
-  const kpis = [
+  const kpis = useMemo(() => [
     { label: 'Toplam Misyon', value: String(summary?.total_missions ?? missions.length), icon: <Globe size={20}/>, color: 'accent', unit: '' },
     { label: 'Veri Olan', value: String(summary?.missions_with_data ?? '–'), icon: <MapPin size={20}/>, color: 'green', unit: '' },
-    { label: 'Toplam Test', value: Number(summary?.total_tests ?? 0).toLocaleString(), icon: <Activity size={20}/>, color: 'blue', unit: '' },
+    { label: 'Toplam Test', value: String(Number(summary?.total_tests ?? 0)), icon: <Activity size={20}/>, color: 'blue', unit: '' },
     { label: 'Ort. İndirme', value: fmt(summary?.global_avg_download), icon: <TrendingUp size={20}/>, color: 'green', unit: 'Mbps' },
     { label: 'Ort. Yükleme', value: fmt(summary?.global_avg_upload), icon: <Zap size={20}/>, color: 'blue', unit: 'Mbps' },
     { label: 'Ort. Gecikme', value: summary?.global_avg_latency ? fmt(summary.global_avg_latency, 0) : '—', icon: <Clock size={20}/>, color: 'amber', unit: summary?.global_avg_latency ? 'ms' : '' },
-  ];
+  ], [summary, missions.length]);
 
-  const chartData = continentReports
+  const chartData = useMemo(() => continentReports
     .filter(r => r.continent && Number(r.avg_download) > 0)
-    .map(r => ({ name: String(r.continent ?? '?'), dl: Number(Number(r.avg_download).toFixed(1)), ul: Number(Number(r.avg_upload).toFixed(1)) }));
+    .map(r => ({ name: String(r.continent ?? '?'), dl: Number(Number(r.avg_download).toFixed(1)), ul: Number(Number(r.avg_upload).toFixed(1)) })),
+    [continentReports]);
 
-  const vpnChartData = vpntypeReports.map(r => ({
+  const vpnChartData = useMemo(() => vpntypeReports.map(r => ({
     name: String(r.vpn_type) === 'GSM' ? '📶 GSM' : '🌐 Karasal',
     dl: Number(Number(r.avg_download).toFixed(1)),
     ul: Number(Number(r.avg_upload).toFixed(1)),
     latency: Number(Number(r.avg_latency).toFixed(0)),
-  }));
-
-  // Radar için 0-100 normalize (aynı ölçek → anlamlı şekil)
-  const maxDl      = Math.max(...vpnChartData.map(v => v.dl), 1);
-  const maxUl      = Math.max(...vpnChartData.map(v => v.ul), 1);
-  const maxLatency = Math.max(...vpnChartData.map(v => v.latency), 1);
-  const vpnRadarData = [
-    { metric: 'İndirme',  ...Object.fromEntries(vpnChartData.map(v => [v.name, Math.round((v.dl / maxDl) * 100)])) },
-    { metric: 'Yükleme',  ...Object.fromEntries(vpnChartData.map(v => [v.name, Math.round((v.ul / maxUl) * 100)])) },
-    { metric: 'Gecikme',  ...Object.fromEntries(vpnChartData.map(v => [v.name, v.latency > 0 ? Math.round((1 - v.latency / maxLatency) * 100) : null])) },
-  ].filter(d => Object.values(d).some(val => val !== null && typeof val === 'number'));
+  })), [vpntypeReports]);
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px', background: 'var(--bg-base)' }} className="fade-in">
@@ -130,7 +125,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
                 <style>{`
                   @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
                 `}</style>
-                {activityFeed.slice(0, 15).map((log, idx) => (
+                {activityFeed.slice(0, 15).map((log) => (
                   <span key={log.id} style={{ marginRight: '40px' }}>
                     <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{log.time}</span>
                     <span style={{ color: 'var(--border-light)' }}> | </span>
@@ -230,7 +225,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
                 <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false}/>
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} unit=" Mbps"/>
                 <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} cursor={{ fill: 'rgba(56,189,248,0.05)' }}/>
-                <Bar dataKey="dl" name="İndirme (Mbps)" fill="#22c55e" radius={[4,4,0,0]}>
+                <Bar dataKey="dl" name="İndirme (Mbps)" fill="#38bdf8" radius={[4,4,0,0]}>
                   {chartData.map((_, i) => <Cell key={i} fill={CONTINENT_COLORS[i % CONTINENT_COLORS.length]}/>)}
                 </Bar>
               </BarChart>
@@ -247,7 +242,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '8px' }}>
               {/* Metrik satırları — her metrik için iki hat yan yana */}
               {[
-                { key: 'dl', label: 'İndirme', unit: 'Mbps', color: '#22c55e', icon: '↓' },
+                { key: 'dl', label: 'İndirme', unit: 'Mbps', color: '#38bdf8', icon: '↓' },
                 { key: 'ul', label: 'Yükleme', unit: 'Mbps', color: '#38bdf8', icon: '↑' },
                 ...(vpnChartData.some(v => v.latency > 0) ? [{ key: 'latency', label: 'Gecikme', unit: 'ms', color: '#f59e0b', icon: '⏱' }] : []),
               ].map(metric => {
@@ -261,7 +256,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
                       </span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                      {vpnChartData.map((v, i) => {
+                      {vpnChartData.map((v) => {
                         const val = metric.key === 'latency' ? v.latency : metric.key === 'dl' ? v.dl : v.ul;
                         const pct = metric.key === 'latency'
                           ? Math.round((1 - val / maxVal) * 100)
@@ -269,7 +264,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
                         const barW = metric.key === 'latency'
                           ? Math.round((1 - val / maxVal) * 100)
                           : Math.round((val / maxVal) * 100);
-                        const hatColor = i === 0 ? '#a855f7' : '#38bdf8';
+                        const hatColor = vpnColor(v.name);
                         if (metric.key === 'latency' && val === 0) return null;
                         return (
                           <div key={v.name} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -297,11 +292,11 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
               })}
               {/* Hat özet satırı */}
               <div style={{ display: 'flex', gap: '8px', marginTop: '4px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
-                {vpnChartData.map((v, i) => (
-                  <div key={v.name} style={{ flex: 1, background: 'var(--bg-base)', borderRadius: '8px', padding: '8px 10px', borderTop: `2px solid ${i === 0 ? '#a855f7' : '#38bdf8'}` }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: i === 0 ? '#a855f7' : '#38bdf8', marginBottom: '4px' }}>{v.name}</div>
+                {vpnChartData.map((v) => (
+                  <div key={v.name} style={{ flex: 1, background: 'var(--bg-base)', borderRadius: '8px', padding: '8px 10px', borderTop: `2px solid ${vpnColor(v.name)}` }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: vpnColor(v.name), marginBottom: '4px' }}>{v.name}</div>
                     <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-                      <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(v.dl)}</span> / <span style={{ color: '#38bdf8', fontWeight: 600 }}>{fmt(v.ul)}</span> Mbps
+                      <span style={{ color: '#38bdf8', fontWeight: 600 }}>{fmt(v.dl)}</span> / <span style={{ color: '#a855f7', fontWeight: 600 }}>{fmt(v.ul)}</span> Mbps
                       {v.latency > 0 && <><br/><span style={{ color: '#f59e0b', fontWeight: 600 }}>{v.latency} ms</span> gecikme</>}
                     </div>
                   </div>
@@ -337,8 +332,8 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
                 const pct = maxV > 0 ? (v / maxV) * 100 : 0;
                 const rankClass = i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : 'rank-other';
                 
-                const pctColor = isDl ? (i < 3 ? 'linear-gradient(90deg, #22c55e, #4ade80)' : 'var(--green)') 
-                                     : (i < 3 ? 'linear-gradient(90deg, #3b82f6, #60a5fa)' : 'var(--blue)');
+                const pctColor = isDl ? (i < 3 ? 'linear-gradient(90deg, #38bdf8, #06b6d4)' : '#38bdf8')
+                                     : (i < 3 ? 'linear-gradient(90deg, #a855f7, #c084fc)' : '#a855f7');
                 
                 return (
                   <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -350,10 +345,10 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
-                       <div style={{ fontSize: '0.85rem', fontWeight: 800, color: isDl ? '#22c55e' : '#3b82f6' }}>
+                       <div style={{ fontSize: '0.85rem', fontWeight: 800, color: isDl ? '#38bdf8' : '#a855f7' }}>
                           {v.toFixed(1)} <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>Mbps</span>
                        </div>
-                       <div style={{ fontSize: '0.65rem', fontWeight: 600, color: isDl ? '#3b82f6' : '#22c55e', opacity: 0.8 }}>
+                       <div style={{ fontSize: '0.65rem', fontWeight: 600, color: isDl ? '#a855f7' : '#38bdf8', opacity: 0.8 }}>
                           {isDl ? '↑' : '↓'} {alt.toFixed(1)} Mbps
                        </div>
                     </div>
@@ -369,7 +364,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <div className="section-title" style={{ marginBottom: 0 }}>Canlı Aktivite</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div className="activity-dot pulse-dot" style={{ background: '#22c55e' }}/>
+              <div className="activity-dot pulse-dot" style={{ background: '#38bdf8' }}/>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>WebSocket</span>
             </div>
           </div>
@@ -382,11 +377,11 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
             <div style={{ overflowY: 'auto', maxHeight: '280px' }}>
               {activityFeed.slice(0, 15).map(a => (
                 <div key={a.id} className="activity-item">
-                  <div className="activity-dot" style={{ background: a.vpnType === 'GSM' ? '#a855f7' : '#38bdf8', marginTop: 5 }}/>
+                  <div className="activity-dot" style={{ background: vpnColor(a.vpnType), marginTop: 5 }}/>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.missionName}</div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      <span style={{ color: a.vpnType === 'GSM' ? '#a855f7' : '#38bdf8' }}>{a.vpnType}</span>
+                      <span style={{ color: vpnColor(a.vpnType) }}>{a.vpnType}</span>
                       {' · '}↓{fmt(a.download, 1)} / ↑{fmt(a.upload, 1)} Mbps · {fmt(a.latency, 0)}ms
                     </div>
                   </div>

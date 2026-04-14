@@ -4,7 +4,7 @@ import postgres from '@fastify/postgres';
 import websocket from '@fastify/websocket';
 import Redis from 'ioredis';
 import { registerItaiMiddleware } from './middleware/itai';
-import { convertToMbps, resolveVpnType, parseSpeedTestBody, detectPayloadType, parseSdwanMembers, parseSdwanStatus } from './helpers/webhook-parser';
+import { convertToMbps, resolveVpnType, parseSpeedTestBody, detectPayloadType, parseSdwanMembers, parseSdwanStatus, parseSdwanJson } from './helpers/webhook-parser';
 
 export interface AppOptions {
   testing?: boolean;
@@ -55,7 +55,11 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // ─── Webhook Stats tracker (in-memory) ──────────────────────────────────────
   const webhookStats = { total: 0, today: 0, lastDay: '' };
 
-  fastify.addHook('onRequest', async (request, reply) => {
+  // ─── Raw webhook ring buffer (son 10 istek — SDWAN format tanısı için) ───────
+  interface WebhookRingEntry { ts: string; method: string; url: string; type: string; bodySnippet: string; ip: string; }
+  const webhookRing: WebhookRingEntry[] = [];
+
+  fastify.addHook('onRequest', async (request, _reply) => {
     fastify.log.info(`[DEBUG] INCOMING: ${request.method} ${request.url} from ${request.ip}`);
   });
 
@@ -84,8 +88,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // Catch-all parser for FortiManager (e.g. urlencoded or custom content types) to prevent 415 Unsupported Media Type
   fastify.addContentTypeParser('*', { parseAs: 'string' }, (_req, body, done) => done(null, body));
 
-  /** Cihaz adına göre CityID bul — DeviceName önce, CityName fallback */
+  /** Cihaz adına göre CityID bul — Redis cache (1 saat TTL), sonra DB.
+   *  null sonuç cache'lenmez: şehir sonradan eklenince bir sonraki webhook otomatik eşleşir. */
   const findCityId = async (deviceName: string): Promise<number | null> => {
+    const cacheKey = `cityid:${deviceName.toUpperCase()}`;
+    const cached = await redis.get(cacheKey);
+    if (cached !== null) return Number(cached); // sadece pozitif sonuçlar cache'lendi
+
     const res = await fastify.pg.query<{ cityid: number }>(
       `SELECT CityID FROM Cities
        WHERE (DeviceName IS NOT NULL AND DeviceName <> '' AND UPPER(DeviceName) = UPPER($1))
@@ -93,7 +102,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
        LIMIT 1`,
       [deviceName]
     );
-    return res.rows.length > 0 ? res.rows[0].cityid : null;
+    const cityId = res.rows.length > 0 ? res.rows[0].cityid : null;
+    // Yalnızca bulunduğunda cache'le — null cache'lemek misyon eklendikten sonra
+    // webhook'un hâlâ UNKNOWN_DEVICE dönmesine yol açar
+    if (cityId !== null) {
+      await redis.setex(cacheKey, 3600, String(cityId));
+    }
+    return cityId;
   };
 
   // Handle various possible paths Fortigate might use
@@ -101,17 +116,30 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     const rawBody = (request.body as string) || '';
     const payloadType = detectPayloadType(rawBody);
 
-    fastify.log.info(`Webhook recv: type=${payloadType}`);
+    fastify.log.info(`Webhook recv: type=${payloadType} len=${rawBody.length}`);
+
+    // Ring buffer — tanı amaçlı son 10 webhook'u bellekte tut
+    webhookRing.push({
+      ts: new Date().toISOString(),
+      method: request.method,
+      url: request.url,
+      type: payloadType,
+      bodySnippet: rawBody.slice(0, 600),
+      ip: request.ip || 'UNKNOWN',
+    });
+    if (webhookRing.length > 10) webhookRing.shift();
 
     // ── Log raw webhook — sadece speedtest ve unknown tipler WebhookLogs'a gider
     // SDWAN payload'ları kendi tablolarına (SdwanMembers/SdwanStatus) kaydedilir
-    const isSdwan = payloadType === 'sdwan_members' || payloadType === 'sdwan_status' || payloadType === 'sdwan_combined';
+    const isSdwan = payloadType === 'sdwan_members' || payloadType === 'sdwan_status' || payloadType === 'sdwan_combined' || payloadType === 'sdwan_json';
+    let webhookLogId: number | null = null;
     if (!isSdwan) {
       try {
-        await fastify.pg.query(
-          `INSERT INTO WebhookLogs (SourceIP, RawPayload, ParsedContext) VALUES ($1, $2, $3)`,
+        const logRes = await fastify.pg.query<{ webhooklogid: number }>(
+          `INSERT INTO WebhookLogs (SourceIP, RawPayload, ParsedContext) VALUES ($1, $2, $3) RETURNING WebhookLogID`,
           [request.ip || 'UNKNOWN', rawBody, JSON.stringify({ payloadType })]
         );
+        webhookLogId = logRes.rows[0]?.webhooklogid ?? null;
       } catch (err) {
         fastify.log.error(err, 'Failed to log webhook into WebhookLogs');
       }
@@ -153,8 +181,14 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
           activeInterface = found?.interfaceName ?? null;
         }
 
-        // Upsert status
+        // Upsert status + geçmiş kaydı
         if (activeMemberSeq !== null) {
+          // Önceki aktif interface'i oku
+          const prevRes = await fastify.pg.query<{ activeinterface: string }>(
+            `SELECT ActiveInterface FROM SdwanStatus WHERE CityID = $1`, [cityId]
+          );
+          const prevInterface = prevRes.rows[0]?.activeinterface ?? null;
+
           await fastify.pg.query(
             `INSERT INTO SdwanStatus (CityID, ActiveSeqID, ActiveInterface, UpdatedAt)
              VALUES ($1, $2, $3, NOW())
@@ -162,6 +196,14 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
                SET ActiveSeqID = EXCLUDED.ActiveSeqID, ActiveInterface = EXCLUDED.ActiveInterface, UpdatedAt = NOW()`,
             [cityId, activeMemberSeq, activeInterface]
           );
+
+          // Değişiklik varsa geçmişe yaz
+          if (prevInterface !== activeInterface) {
+            await fastify.pg.query(
+              `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID) VALUES ($1, $2, $3, $4)`,
+              [cityId, prevInterface, activeInterface, activeMemberSeq]
+            );
+          }
         }
 
         fastify.log.info(`SDWAN combined: ${deviceName} → ${members.length} üye, aktif seq=${activeMemberSeq} (${activeInterface ?? '?'})`);
@@ -174,6 +216,62 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
         return reply.send({ status: 'OK', type: 'sdwan_combined', device: deviceName, members, activeMemberSeq, activeInterface });
       } catch (err) {
         fastify.log.error(err, 'SDWAN combined DB error');
+        return reply.status(500).send({ status: 'Error', message: 'DB error' });
+      }
+    }
+
+    // ── SDWAN JSON (manuel test / alternatif format) ──────────────────────────
+    if (payloadType === 'sdwan_json') {
+      try {
+        const { deviceName, members, activeMemberSeq } = parseSdwanJson(rawBody);
+        fastify.log.info(`SDWAN JSON parse: deviceName=${deviceName} members=${members.length} activeSeq=${activeMemberSeq}`);
+        if (!deviceName || members.length === 0) {
+          return reply.status(400).send({ status: 'PARSE_ERROR', message: 'deviceName veya members parse edilemedi' });
+        }
+        const cityId = await findCityId(deviceName);
+        if (!cityId) {
+          fastify.log.warn(`SDWAN JSON UNKNOWN_DEVICE: ${deviceName}`);
+          return reply.status(400).send({ status: 'UNKNOWN_DEVICE', device: deviceName });
+        }
+        for (const m of members) {
+          await fastify.pg.query(
+            `INSERT INTO SdwanMembers (CityID, SeqID, InterfaceName, Cost, UpdatedAt)
+             VALUES ($1, $2, $3, $4, NOW())
+             ON CONFLICT (CityID, SeqID) DO UPDATE
+               SET InterfaceName = EXCLUDED.InterfaceName, Cost = EXCLUDED.Cost, UpdatedAt = NOW()`,
+            [cityId, m.seqId, m.interfaceName, m.cost]
+          );
+        }
+        let activeInterface: string | null = null;
+        if (activeMemberSeq !== null) {
+          const found = members.find(m => m.seqId === activeMemberSeq);
+          activeInterface = found?.interfaceName ?? null;
+          const prevRes = await fastify.pg.query<{ activeinterface: string }>(
+            `SELECT ActiveInterface FROM SdwanStatus WHERE CityID = $1`, [cityId]
+          );
+          const prevInterface = prevRes.rows[0]?.activeinterface ?? null;
+          await fastify.pg.query(
+            `INSERT INTO SdwanStatus (CityID, ActiveSeqID, ActiveInterface, UpdatedAt)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (CityID) DO UPDATE
+               SET ActiveSeqID = EXCLUDED.ActiveSeqID, ActiveInterface = EXCLUDED.ActiveInterface, UpdatedAt = NOW()`,
+            [cityId, activeMemberSeq, activeInterface]
+          );
+          if (prevInterface !== activeInterface) {
+            await fastify.pg.query(
+              `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID) VALUES ($1, $2, $3, $4)`,
+              [cityId, prevInterface, activeInterface, activeMemberSeq]
+            );
+          }
+        }
+        await redis.publish('speedtest_updates', JSON.stringify({
+          type: 'sdwan_combined', cityId, deviceName, members, activeMemberSeq, activeInterface,
+          time: new Date().toISOString(),
+        }));
+        fastify.log.info(`SDWAN JSON: ${deviceName} → ${members.length} üye, aktif seq=${activeMemberSeq} (${activeInterface ?? '?'})`);
+        return reply.send({ status: 'OK', type: 'sdwan_json', device: deviceName, members, activeMemberSeq, activeInterface });
+      } catch (err) {
+        fastify.log.error(err, 'SDWAN JSON DB error');
         return reply.status(500).send({ status: 'Error', message: 'DB error' });
       }
     }
@@ -226,13 +324,24 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     if (payloadType === 'sdwan_status') {
       try {
         const { deviceName, activeMemberSeq } = parseSdwanStatus(rawBody);
-        if (!deviceName || activeMemberSeq === null) {
+        if (!deviceName) {
           return reply.status(400).send({ status: 'PARSE_ERROR', message: 'SDWAN status parse edilemedi' });
+        }
+        // activeMemberSeq yoksa sadece komut satırı geldi (çıktı henüz yok) — 200 dön, DB'ye yazma
+        if (activeMemberSeq === null) {
+          fastify.log.info(`SDWAN status komut satırı alındı (veri yok): device=${deviceName}`);
+          return reply.send({ status: 'OK', type: 'sdwan_cmd', device: deviceName, note: 'command received, no data' });
         }
         const cityId = await findCityId(deviceName);
         if (!cityId) {
           return reply.status(400).send({ status: 'UNKNOWN_DEVICE', device: deviceName });
         }
+
+        // Önceki aktif interface'i oku
+        const prevRes2 = await fastify.pg.query<{ activeinterface: string }>(
+          `SELECT ActiveInterface FROM SdwanStatus WHERE CityID = $1`, [cityId]
+        );
+        const prevInterface2 = prevRes2.rows[0]?.activeinterface ?? null;
 
         // Aktif interface adını SdwanMembers'dan bul
         const ifaceRes = await fastify.pg.query<{ interfacename: string }>(
@@ -250,6 +359,14 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
                  UpdatedAt = NOW()`,
           [cityId, activeMemberSeq, activeInterface]
         );
+
+        // Değişiklik varsa geçmişe yaz
+        if (prevInterface2 !== activeInterface) {
+          await fastify.pg.query(
+            `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID) VALUES ($1, $2, $3, $4)`,
+            [cityId, prevInterface2, activeInterface, activeMemberSeq]
+          );
+        }
         fastify.log.info(`SDWAN status güncellendi: ${deviceName} → seq=${activeMemberSeq} (${activeInterface ?? '?'})`);
 
         // WebSocket broadcast
@@ -279,14 +396,19 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       const downloadStatus = downloadMbps !== null ? 'OK' : 'N/A';
 
       fastify.log.info(`SpeedTest: device=${deviceName} vpn=${vpnTypeName} up=${uploadMbps} down=${downloadMbps}`);
+      if (uploadMbps === null || downloadMbps === null) {
+        fastify.log.warn(`SpeedTest PARSE_MISS: rawBody(first 2000)=${JSON.stringify(rawBody.slice(0, 2000))}`);
+      }
 
-      // WebhookLog'u tam parsed veri ile güncelle
-      try {
-        await fastify.pg.query(
-          `UPDATE WebhookLogs SET ParsedContext = $1 WHERE WebhookLogID = (SELECT MAX(WebhookLogID) FROM WebhookLogs WHERE SourceIP = $2)`,
-          [JSON.stringify({ ...parsed, payloadType: 'speedtest' }), request.ip || 'UNKNOWN']
-        );
-      } catch (_) { /* sessizce geç */ }
+      // WebhookLog'u tam parsed veri ile güncelle — RETURNING ile alınan ID kullanılır
+      if (webhookLogId !== null) {
+        try {
+          await fastify.pg.query(
+            `UPDATE WebhookLogs SET ParsedContext = $1 WHERE WebhookLogID = $2`,
+            [JSON.stringify({ ...parsed, payloadType: 'speedtest' }), webhookLogId]
+          );
+        } catch (_) { /* sessizce geç */ }
+      }
 
       const cityId = await findCityId(deviceName);
 
@@ -308,14 +430,15 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
         });
       }
 
+      // Hız değeri yoksa logla ama yine de SpeedStats'a yaz (Status = 'N/A')
+      // Harita/raporlar zaten DownloadStatus='OK' filtresi kullanıyor — N/A kayıtlar görünmez
+      // ama cihazın yaşadığını ve ne zaman bağlandığını kayıt altına almak için yazılır
       if (downloadMbps === null || uploadMbps === null) {
         const missingField = downloadMbps === null && uploadMbps === null
           ? 'download ve upload'
           : downloadMbps === null ? 'download' : 'upload';
-        const skipMsg = `Hız testi başarısız (${deviceName} / ${vpnTypeName}) — ${missingField} değeri alınamadı, SpeedStats'a yazılmadı.`;
-        fastify.log.warn(skipMsg);
-        await dbLog('WARN', skipMsg, { deviceName, vpnName: parsed.vpnName, missingField, rawBody: rawBody.slice(0, 200) });
-        return reply.status(200).send({ status: 'SKIPPED', missing: missingField, device: deviceName, timestamp: new Date().toISOString() });
+        fastify.log.warn(`SpeedTest PARSE_MISS: rawBody(first 2000)=${JSON.stringify(rawBody.slice(0, 2000))}`);
+        fastify.log.info(`Hız değeri alınamadı (${deviceName} / ${vpnTypeName}) — ${missingField} eksik, SpeedStats'a N/A olarak yazılıyor.`);
       }
 
       const vpnRes = await fastify.pg.query<{ vpntypeid: number }>(
@@ -332,13 +455,16 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
         [cityId, vpnTypeId, deviceName, downloadMbps, uploadMbps, latencyMs, uploadStatus, downloadStatus]
       );
 
-      await redis.publish('speedtest_updates', JSON.stringify({
-        type: 'speedtest',
-        cityId, vpnTypeId, vpnTypeName,
-        download: downloadMbps, upload: uploadMbps,
-        latency: latencyMs, deviceName,
-        time: new Date().toISOString(),
-      }));
+      // WebSocket'e sadece gerçek hız verisi varsa bildir — N/A kayıtlar haritayı güncellememeli
+      if (downloadMbps !== null || uploadMbps !== null) {
+        await redis.publish('speedtest_updates', JSON.stringify({
+          type: 'speedtest',
+          cityId, vpnTypeId, vpnTypeName,
+          download: downloadMbps, upload: uploadMbps,
+          latency: latencyMs, deviceName,
+          time: new Date().toISOString(),
+        }));
+      }
 
       trackWebhookStat();
 
@@ -363,18 +489,34 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   fastify.post('/api/webhook', webhookHandler);
   fastify.post('/webhook', webhookHandler);
   fastify.post('/', webhookHandler);
+  fastify.get('/api/webhook', webhookHandler);
+  fastify.get('/webhook', webhookHandler);
 
   // ─── Logs API ───────────────────────────────────────────────────────────────
-  fastify.get('/api/logs/system', async (request, reply) => {
-    const { severity } = request.query as any;
+  // Log retention: 30 gün — uygulama başlangıcında ve her gece temizlenir
+  const purgeOldLogs = async () => {
     try {
-      let query = `SELECT * FROM SystemLogs`;
-      const params: any[] = [];
+      const r1 = await fastify.pg.query(`DELETE FROM SystemLogs  WHERE CreatedAt < NOW() - INTERVAL '30 days'`);
+      const r2 = await fastify.pg.query(`DELETE FROM WebhookLogs WHERE CreatedAt < NOW() - INTERVAL '30 days'`);
+      if ((r1.rowCount ?? 0) > 0 || (r2.rowCount ?? 0) > 0) {
+        fastify.log.info(`Log temizleme: ${r1.rowCount ?? 0} sistem + ${r2.rowCount ?? 0} webhook logu silindi (>30 gün)`);
+      }
+    } catch (e) { fastify.log.error(e, 'Log purge hatası'); }
+  };
+  // purgeOldLogs başlangıcı onReady içinde çağrılır — fastify.pg hazır olduktan sonra
+  // (burada çağrılırsa pg henüz register edilmemiş olur)
+
+  fastify.get('/api/logs/system', async (request, reply) => {
+    const { severity, days } = request.query as any;
+    const retentionDays = Math.min(Number(days) || 30, 30); // max 30 gün
+    try {
+      const params: any[] = [retentionDays];
+      let query = `SELECT * FROM SystemLogs WHERE CreatedAt >= NOW() - ($1 || ' days')::INTERVAL`;
       if (severity && severity !== 'ALL') {
-        query += ` WHERE Severity = $1`;
+        query += ` AND Severity = $2`;
         params.push(severity);
       }
-      query += ` ORDER BY CreatedAt DESC LIMIT 100`;
+      query += ` ORDER BY CreatedAt DESC LIMIT 5000`;
       const res = await fastify.pg.query(query, params);
       return reply.send(res.rows);
     } catch (err: any) {
@@ -384,8 +526,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   fastify.get('/api/logs/webhooks', async (request, reply) => {
+    const { days } = request.query as any;
+    const retentionDays = Math.min(Number(days) || 30, 30); // max 30 gün
     try {
-      const res = await fastify.pg.query(`SELECT * FROM WebhookLogs ORDER BY CreatedAt DESC LIMIT 100`);
+      const res = await fastify.pg.query(
+        `SELECT * FROM WebhookLogs WHERE CreatedAt >= NOW() - ($1 || ' days')::INTERVAL ORDER BY CreatedAt DESC LIMIT 5000`,
+        [retentionDays]
+      );
       return reply.send(res.rows);
     } catch (err: any) {
       fastify.log.error(err, 'Failed to fetch WebhookLogs');
@@ -431,27 +578,49 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }
   });
 
-  // Debug: Son gelen webhook'u ve parse sonucunu göster
+  // Debug: Sistem tanı — son SpeedStats, webhook ve parse durumu
   fastify.get('/api/debug/webhook-last', async (_req, reply) => {
     try {
       const logs = await fastify.pg.query(
         `SELECT SourceIP, RawPayload, ParsedContext, CreatedAt
-         FROM WebhookLogs ORDER BY CreatedAt DESC LIMIT 5`
+         FROM WebhookLogs ORDER BY CreatedAt DESC LIMIT 10`
       );
       const stats = await fastify.pg.query(
-        `SELECT ss.StatID, c.CityName, vt.VpnTypeName, ss.DownloadSpeed, ss.UploadSpeed, ss.MeasuredAt
+        `SELECT ss.StatID, c.CityName, vt.VpnTypeName,
+                ss.DownloadSpeed, ss.UploadSpeed, ss.Latency,
+                ss.DownloadStatus, ss.UploadStatus, ss.MeasuredAt
          FROM SpeedStats ss
          JOIN Cities c ON ss.CityID = c.CityID
          JOIN VpnTypes vt ON ss.VpnTypeID = vt.VpnTypeID
-         ORDER BY ss.MeasuredAt DESC LIMIT 5`
+         ORDER BY ss.MeasuredAt DESC LIMIT 20`
       );
       const vpnTypes = await fastify.pg.query(
         `SELECT VpnTypeID, VpnTypeName FROM VpnTypes ORDER BY VpnTypeID`
       );
+      // Son başarılı SpeedStats
+      const lastOk = await fastify.pg.query(
+        `SELECT c.CityName, vt.VpnTypeName, ss.DownloadSpeed, ss.MeasuredAt
+         FROM SpeedStats ss
+         JOIN Cities c ON ss.CityID = c.CityID
+         JOIN VpnTypes vt ON ss.VpnTypeID = vt.VpnTypeID
+         WHERE ss.DownloadStatus = 'OK'
+         ORDER BY ss.MeasuredAt DESC LIMIT 1`
+      );
+      // Günlük webhook sayısı (son 7 gün)
+      const dailyCounts = await fastify.pg.query(
+        `SELECT DATE(CreatedAt) as day, COUNT(*) as count
+         FROM WebhookLogs
+         WHERE CreatedAt >= NOW() - INTERVAL '7 days'
+         GROUP BY DATE(CreatedAt)
+         ORDER BY day DESC`
+      );
       return reply.send({
+        lastSuccessfulSpeedTest: lastOk.rows[0] ?? null,
         recentWebhooks: logs.rows,
         recentSpeedStats: stats.rows,
         vpnTypes: vpnTypes.rows,
+        dailyWebhookCounts: dailyCounts.rows,
+        recentRawWebhooks: [...webhookRing].reverse(), // en yeni önde
       });
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
@@ -475,9 +644,17 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
         uploadStatus || 'OK',
         downloadStatus || 'OK',
       ]);
+      // VpnTypeName'i DB'den çek — frontend sınıflandırması için gerekli
+      const vtRes = await fastify.pg.query<{ vpntypename: string }>(
+        `SELECT VpnTypeName FROM VpnTypes WHERE VpnTypeID = $1`, [vpnTypeId]
+      );
+      const vpnTypeName = vtRes.rows[0]?.vpntypename ?? 'METRO';
       await redis.publish('speedtest_updates', JSON.stringify({
-        cityId, vpnTypeId, download: downloadSpeed, upload: uploadSpeed,
-        latency: latency || 0.0, deviceName, time: new Date(),
+        type: 'speedtest',
+        cityId, vpnTypeId, vpnTypeName,
+        download: downloadSpeed, upload: uploadSpeed,
+        latency: latency || 0.0, deviceName,
+        time: new Date().toISOString(),
       }));
       return { status: 'success', data: result.rows[0] };
     } catch (err) {
@@ -495,6 +672,8 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
           c.CityID as id, c.CityName as name, c.IL as city,
           c.ULKE as country, c.KITA as continent,
           c.BOYLAM as lon, c.ENLEM as lat,
+          c.IsStarlink as is_starlink,
+          c.SatelliteType as satellite_type,
           gsm.DownloadSpeed   as gsm_download,   gsm.UploadSpeed   as gsm_upload,
           gsm.Latency         as gsm_latency,    gsm.DeviceName    as gsm_device,    gsm.MeasuredAt as gsm_test_time,
           metro.DownloadSpeed as metro_download,  metro.UploadSpeed as metro_upload,
@@ -784,13 +963,18 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // 11. Filter values
   fastify.get('/api/reports/filters', async (_request, reply) => {
     try {
-      const continents = await fastify.pg.query('SELECT DISTINCT KITA FROM Cities WHERE KITA IS NOT NULL ORDER BY KITA');
-      const countries  = await fastify.pg.query('SELECT DISTINCT ULKE FROM Cities WHERE ULKE IS NOT NULL ORDER BY ULKE');
-      const vpnTypes   = await fastify.pg.query('SELECT DISTINCT VpnTypeName FROM VpnTypes ORDER BY VpnTypeName');
+      const { rows } = await fastify.pg.query(`
+        SELECT 'continent' as type, KITA as val FROM Cities WHERE KITA IS NOT NULL
+        UNION ALL
+        SELECT 'country',           ULKE        FROM Cities WHERE ULKE IS NOT NULL
+        UNION ALL
+        SELECT 'vpntype',           VpnTypeName FROM VpnTypes
+        ORDER BY type, val
+      `);
       return {
-        continents: continents.rows.map((r: any) => r.kita),
-        countries:  countries.rows.map((r: any) => r.ulke),
-        vpnTypes:   vpnTypes.rows.map((r: any) => r.vpntypename),
+        continents: rows.filter((r: any) => r.type === 'continent').map((r: any) => r.val).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i).sort(),
+        countries:  rows.filter((r: any) => r.type === 'country').map((r: any) => r.val).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i).sort(),
+        vpnTypes:   rows.filter((r: any) => r.type === 'vpntype').map((r: any) => r.val),
       };
     } catch (err) {
       fastify.log.error(err);
@@ -800,9 +984,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // 13. Sparklines History
   fastify.get('/api/reports/sparklines', async (_request, reply) => {
     try {
-      const queryDaily = `SELECT CityID as cid, VpnTypeID as vid, DATE_TRUNC('hour', MeasuredAt) as ts, AVG(DownloadSpeed) as dl, AVG(UploadSpeed) as ul FROM SpeedStats WHERE MeasuredAt > NOW() - INTERVAL '24 hours' GROUP BY CityID, VpnTypeID, DATE_TRUNC('hour', MeasuredAt) ORDER BY ts ASC`;
-      const queryWeekly = `SELECT CityID as cid, VpnTypeID as vid, DATE_TRUNC('day', MeasuredAt) as ts, AVG(DownloadSpeed) as dl, AVG(UploadSpeed) as ul FROM SpeedStats WHERE MeasuredAt > NOW() - INTERVAL '7 days' GROUP BY CityID, VpnTypeID, DATE_TRUNC('day', MeasuredAt) ORDER BY ts ASC`;
-      const queryMonthly = `SELECT CityID as cid, VpnTypeID as vid, DATE_TRUNC('day', MeasuredAt) as ts, AVG(DownloadSpeed) as dl, AVG(UploadSpeed) as ul FROM SpeedStats WHERE MeasuredAt > NOW() - INTERVAL '30 days' GROUP BY CityID, VpnTypeID, DATE_TRUNC('day', MeasuredAt) ORDER BY ts ASC`;
+      const queryDaily = `SELECT ss.CityID as cid, vt.VpnTypeName as vpn_type, DATE_TRUNC('hour', ss.MeasuredAt) as ts, AVG(ss.DownloadSpeed) as dl, AVG(ss.UploadSpeed) as ul FROM SpeedStats ss JOIN VpnTypes vt ON ss.VpnTypeID = vt.VpnTypeID WHERE ss.MeasuredAt > NOW() - INTERVAL '24 hours' GROUP BY ss.CityID, vt.VpnTypeName, DATE_TRUNC('hour', ss.MeasuredAt) ORDER BY ts ASC`;
+      const queryWeekly = `SELECT ss.CityID as cid, vt.VpnTypeName as vpn_type, DATE_TRUNC('day', ss.MeasuredAt) as ts, AVG(ss.DownloadSpeed) as dl, AVG(ss.UploadSpeed) as ul FROM SpeedStats ss JOIN VpnTypes vt ON ss.VpnTypeID = vt.VpnTypeID WHERE ss.MeasuredAt > NOW() - INTERVAL '7 days' GROUP BY ss.CityID, vt.VpnTypeName, DATE_TRUNC('day', ss.MeasuredAt) ORDER BY ts ASC`;
+      const queryMonthly = `SELECT ss.CityID as cid, vt.VpnTypeName as vpn_type, DATE_TRUNC('day', ss.MeasuredAt) as ts, AVG(ss.DownloadSpeed) as dl, AVG(ss.UploadSpeed) as ul FROM SpeedStats ss JOIN VpnTypes vt ON ss.VpnTypeID = vt.VpnTypeID WHERE ss.MeasuredAt > NOW() - INTERVAL '30 days' GROUP BY ss.CityID, vt.VpnTypeName, DATE_TRUNC('day', ss.MeasuredAt) ORDER BY ts ASC`;
 
       const [resD, resW, resM] = await Promise.all([
         fastify.pg.query(queryDaily),
@@ -811,14 +995,14 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       ]);
 
       const data: Record<string, Record<string, any>> = {};
-      
+
       const processRows = (rows: any[], periodName: string) => {
          rows.forEach(r => {
             const cid = String(r.cid);
-            const vid = r.vid === 1 ? 'METRO' : r.vid === 2 ? 'GSM' : String(r.vid);
+            const vpnType = String(r.vpn_type);
             if (!data[cid]) data[cid] = {};
-            if (!data[cid][vid]) data[cid][vid] = { daily: [], weekly: [], monthly: [] };
-            data[cid][vid][periodName].push({ ts: r.ts, dl: Number(r.dl).toFixed(1), ul: Number(r.ul).toFixed(1) });
+            if (!data[cid][vpnType]) data[cid][vpnType] = { daily: [], weekly: [], monthly: [] };
+            data[cid][vpnType][periodName].push({ ts: r.ts, dl: Number(r.dl).toFixed(1), ul: Number(r.ul).toFixed(1) });
          });
       };
 
@@ -836,31 +1020,39 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // 14. NOC Executive Summary
   fastify.get('/api/reports/noc-summary', async (request, reply) => {
     const { period } = request.query as { period?: 'daily' | 'weekly' | 'monthly' };
-    const intervalStr = period === 'daily' ? '1 day' : period === 'weekly' ? '7 days' : '30 days';
+    const INTERVALS: Record<string, string> = { daily: '1 day', weekly: '7 days', monthly: '30 days' };
+    const intervalStr = INTERVALS[period || ''] ?? '30 days';
 
     const query = `
-      SELECT c.CityID as id, c.CityName as name, c.ULKE as country, c.KITA as continent, 
-             ss.VpnTypeID as vid,
+      SELECT c.CityID as id, c.CityName as name, c.ULKE as country, c.KITA as continent,
+             vt.VpnTypeName as vpn_type,
              AVG(ss.DownloadSpeed) as dl, AVG(ss.UploadSpeed) as ul, COUNT(*) as test_count
-      FROM Cities c 
+      FROM Cities c
       JOIN SpeedStats ss ON c.CityID = ss.CityID
-      WHERE ss.MeasuredAt > NOW() - INTERVAL '${intervalStr}'
+      JOIN VpnTypes vt ON ss.VpnTypeID = vt.VpnTypeID
+      WHERE ss.MeasuredAt > NOW() - $1::interval
         AND ss.DownloadStatus = 'OK' AND ss.UploadStatus = 'OK'
-      GROUP BY c.CityID, c.CityName, c.ULKE, c.KITA, ss.VpnTypeID
+      GROUP BY c.CityID, c.CityName, c.ULKE, c.KITA, vt.VpnTypeName
     `;
 
     try {
-      const { rows } = await fastify.pg.query(query);
+      const { rows } = await fastify.pg.query(query, [intervalStr]);
 
-      const gsm_arr = rows.filter((r: any) => r.vid === 2).map((r: any) => ({ ...r, dl: Number(r.dl).toFixed(1), ul: Number(r.ul).toFixed(1) }));
-      const metro_arr = rows.filter((r: any) => r.vid === 1).map((r: any) => ({ ...r, dl: Number(r.dl).toFixed(1), ul: Number(r.ul).toFixed(1) }));
+      const toRow = (r: any) => ({ ...r, dl: Number(r.dl).toFixed(1), ul: Number(r.ul).toFixed(1) });
+      const top = (arr: any[], key: 'dl' | 'ul', n = 10) =>
+        [...arr].sort((a, b) => Number(b[key]) - Number(a[key])).slice(0, n);
 
-      const top_gsm_dl = [...gsm_arr].sort((a: any, b: any) => Number(b.dl) - Number(a.dl)).slice(0, 10);
-      const top_gsm_ul = [...gsm_arr].sort((a: any, b: any) => Number(b.ul) - Number(a.ul)).slice(0, 10);
-      
-      const top_metro_dl = [...metro_arr].sort((a: any, b: any) => Number(b.dl) - Number(a.dl)).slice(0, 10);
-      const top_metro_ul = [...metro_arr].sort((a: any, b: any) => Number(b.ul) - Number(a.ul)).slice(0, 10);
-      
+      const gsm_arr   = rows.filter((r: any) => r.vpn_type === 'GSM').map(toRow);
+      const metro_arr = rows.filter((r: any) => r.vpn_type === 'METRO').map(toRow);
+      const hub_arr   = rows.filter((r: any) => r.vpn_type === 'HUB').map(toRow);
+
+      const top_gsm_dl   = top(gsm_arr, 'dl');
+      const top_gsm_ul   = top(gsm_arr, 'ul');
+      const top_metro_dl = top(metro_arr, 'dl');
+      const top_metro_ul = top(metro_arr, 'ul');
+      const top_hub_dl   = top(hub_arr, 'dl');
+      const top_hub_ul   = top(hub_arr, 'ul');
+
       const bottlenecks = rows.filter((r: any) => {
         const dl = Number(r.dl);
         const ul = Number(r.ul);
@@ -868,8 +1060,8 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
         const diff = Math.abs(dl - ul);
         const max = Math.max(dl, ul, 0.001);
         return (diff / max) > 0.8;
-      }).map((r: any) => ({ ...r, dl: Number(r.dl).toFixed(1), ul: Number(r.ul).toFixed(1) })).sort((a: any, b: any) => Number(b.dl) - Number(a.dl)).slice(0, 15);
-      
+      }).map(toRow).sort((a: any, b: any) => Number(b.dl) - Number(a.dl)).slice(0, 15);
+
       const continentsMap: Record<string, { dl: number, count: number }> = {};
       rows.forEach((r: any) => {
         const k = r.continent || 'Bilinmeyen';
@@ -877,13 +1069,32 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
         continentsMap[k].dl += Number(r.dl);
         continentsMap[k].count++;
       });
-      
+
       const top_continents = Object.keys(continentsMap).map(k => ({
         name: k,
         dl: continentsMap[k].count > 0 ? (continentsMap[k].dl / continentsMap[k].count).toFixed(1) : 0
       })).sort((a: any, b: any) => Number(b.dl) - Number(a.dl));
 
-      return { top_gsm_dl, top_gsm_ul, top_metro_dl, top_metro_ul, bottlenecks, top_continents };
+      // Period'a göre özet istatistikler — stat kartları için
+      const uniqueCities = new Set(rows.map((r: any) => r.id));
+      const global_avg_download = rows.length > 0
+        ? (rows.reduce((s: number, r: any) => s + Number(r.dl), 0) / rows.length).toFixed(2)
+        : '0.00';
+      const global_avg_upload = rows.length > 0
+        ? (rows.reduce((s: number, r: any) => s + Number(r.ul), 0) / rows.length).toFixed(2)
+        : '0.00';
+
+      // Toplam misyon sayısını DB'den al (period bağımsız)
+      const totalRes = await fastify.pg.query(`SELECT COUNT(*) as cnt FROM Cities`);
+      const total_missions = Number(totalRes.rows[0]?.cnt ?? 0);
+      const missions_with_data = uniqueCities.size;
+
+      return {
+        top_gsm_dl, top_gsm_ul, top_metro_dl, top_metro_ul,
+        top_hub_dl, top_hub_ul, bottlenecks, top_continents,
+        total_missions, missions_with_data,
+        global_avg_download, global_avg_upload,
+      };
     } catch (err) {
       fastify.log.error(err);
       return reply.status(500).send({ error: 'DB Error' });
@@ -893,8 +1104,8 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // 12. Cities CRUD
   fastify.get('/api/cities', async (_request, reply) => {
     // CityID'ye göre sıralı dönür — Misyon Yönetiminde ID sıralı görünür
-    const withDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name FROM Cities ORDER BY CityID ASC';
-    const withoutDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name FROM Cities ORDER BY CityID ASC';
+    const withDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type FROM Cities ORDER BY CityID ASC';
+    const withoutDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type FROM Cities ORDER BY CityID ASC';
     try {
       const { rows } = await fastify.pg.query(withDeviceName);
       return rows;
@@ -910,19 +1121,25 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   fastify.post('/api/cities', async (request, reply) => {
-    const { name, continent, country, city, type, lat, lon, device_name } = request.body as any;
+    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type } = request.body as any;
     if (!name) return reply.status(400).send({ error: 'name is required' });
+    const satType = satellite_type || null;
+    const isStarlinkVal = satType === 'starlink' ? true : (is_starlink ?? false);
     try {
       const { rows } = await fastify.pg.query(
-        'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM, DeviceName) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name',
-        [name, continent, country, city, type, lat, lon, device_name || null]
+        'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM, DeviceName, IsStarlink, SatelliteType) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type',
+        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType]
       );
+      // Redis cache'i temizle — yeni şehir webhook'ta hemen eşleşsin
+      const cacheKeys = [`cityid:${name.toUpperCase()}`];
+      if (device_name) cacheKeys.push(`cityid:${device_name.toUpperCase()}`);
+      await Promise.all(cacheKeys.map(k => redis.del(k)));
       return reply.status(201).send(rows[0]);
     } catch {
-      // DeviceName kolonu henüz yoksa onsuz ekle
+      // DeviceName/IsStarlink kolonu henüz yoksa onsuz ekle
       try {
         const { rows } = await fastify.pg.query(
-          'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name',
+          'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink',
           [name, continent, country, city, type, lat, lon]
         );
         return reply.status(201).send(rows[0]);
@@ -935,19 +1152,25 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   fastify.put('/api/cities/:id', async (request, reply) => {
     const { id } = request.params as any;
-    const { name, continent, country, city, type, lat, lon, device_name } = request.body as any;
+    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type } = request.body as any;
+    const satType = satellite_type || null;
+    const isStarlinkVal = satType === 'starlink' ? true : (is_starlink ?? false);
     try {
       const { rows } = await fastify.pg.query(
-        'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7, DeviceName=$8 WHERE CityID=$9 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name',
-        [name, continent, country, city, type, lat, lon, device_name || null, id]
+        'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7, DeviceName=$8, IsStarlink=$9, SatelliteType=$10 WHERE CityID=$11 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type',
+        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType, id]
       );
       if (!rows.length) return reply.status(404).send({ error: 'Not found' });
+      // Redis cache'i temizle — değişen cihaz adı bir sonraki webhook'ta geçerli olsun
+      const cacheKeys = [`cityid:${name.toUpperCase()}`];
+      if (device_name) cacheKeys.push(`cityid:${device_name.toUpperCase()}`);
+      await Promise.all(cacheKeys.map(k => redis.del(k)));
       return rows[0];
     } catch {
-      // DeviceName kolonu henüz yoksa onsuz güncelle
+      // DeviceName/IsStarlink kolonu henüz yoksa onsuz güncelle
       try {
         const { rows } = await fastify.pg.query(
-          'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7 WHERE CityID=$8 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name',
+          'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7 WHERE CityID=$8 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type',
           [name, continent, country, city, type, lat, lon, id]
         );
         if (!rows.length) return reply.status(404).send({ error: 'Not found' });
@@ -965,10 +1188,21 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     if (!numId || isNaN(numId)) return reply.status(400).send({ error: 'Geçersiz ID' });
     try {
       // SpeedStats'taki bağlı kayıtları önce temizle (FK constraint)
+      // Silinecek şehrin adını ve cihaz adını cache temizliği için önce al
+      const cityRes = await fastify.pg.query<{ cityname: string; devicename: string | null }>(
+        'SELECT CityName as cityname, DeviceName as devicename FROM Cities WHERE CityID = $1', [numId]
+      );
       await fastify.pg.query('DELETE FROM SpeedStats WHERE CityID = $1', [numId]);
       // Cities'den sil
       const result = await fastify.pg.query('DELETE FROM Cities WHERE CityID = $1 RETURNING CityID', [numId]);
       if (result.rowCount === 0) return reply.status(404).send({ error: 'Misyon bulunamadı' });
+      // Redis cache'i temizle
+      if (cityRes.rows.length) {
+        const { cityname, devicename } = cityRes.rows[0];
+        const cacheKeys = [`cityid:${cityname.toUpperCase()}`];
+        if (devicename) cacheKeys.push(`cityid:${devicename.toUpperCase()}`);
+        await Promise.all(cacheKeys.map(k => redis.del(k)));
+      }
       fastify.log.info(`Misyon silindi: CityID=${numId}, ${result.rowCount} SpeedStats kaydı ile birlikte.`);
       return { success: true, deletedId: numId };
     } catch (err) {
@@ -978,6 +1212,91 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   // ─── SDWAN API ───────────────────────────────────────────────────────────────
+
+  /** Manuel SDWAN veri enjeksiyonu — FortiGate webhook olmadan test için.
+   *  Body: { deviceName: string, members: [{seqId, interfaceName, cost?}], activeMemberSeq?: number } */
+  fastify.post('/api/sdwan/inject', async (request, reply) => {
+    const body = request.body as any;
+    const { deviceName, members, activeMemberSeq } = body || {};
+    if (!deviceName || !Array.isArray(members) || members.length === 0) {
+      return reply.status(400).send({ error: 'deviceName ve members[] gerekli' });
+    }
+    try {
+      const cityId = await findCityId(String(deviceName));
+      if (!cityId) return reply.status(400).send({ status: 'UNKNOWN_DEVICE', device: deviceName });
+
+      for (const m of members) {
+        await fastify.pg.query(
+          `INSERT INTO SdwanMembers (CityID, SeqID, InterfaceName, Cost, UpdatedAt)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (CityID, SeqID) DO UPDATE
+             SET InterfaceName = EXCLUDED.InterfaceName, Cost = EXCLUDED.Cost, UpdatedAt = NOW()`,
+          [cityId, m.seqId, m.interfaceName, m.cost ?? null]
+        );
+      }
+
+      let activeInterface: string | null = null;
+      if (activeMemberSeq != null) {
+        const found = members.find((m: any) => m.seqId === activeMemberSeq);
+        activeInterface = found?.interfaceName ?? null;
+
+        const prevRes = await fastify.pg.query<{ activeinterface: string }>(
+          `SELECT ActiveInterface FROM SdwanStatus WHERE CityID = $1`, [cityId]
+        );
+        const prevInterface = prevRes.rows[0]?.activeinterface ?? null;
+
+        await fastify.pg.query(
+          `INSERT INTO SdwanStatus (CityID, ActiveSeqID, ActiveInterface, UpdatedAt)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (CityID) DO UPDATE
+             SET ActiveSeqID = EXCLUDED.ActiveSeqID, ActiveInterface = EXCLUDED.ActiveInterface, UpdatedAt = NOW()`,
+          [cityId, activeMemberSeq, activeInterface]
+        );
+
+        if (prevInterface !== activeInterface) {
+          await fastify.pg.query(
+            `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID) VALUES ($1, $2, $3, $4)`,
+            [cityId, prevInterface, activeInterface, activeMemberSeq]
+          );
+        }
+      }
+
+      await redis.publish('speedtest_updates', JSON.stringify({
+        type: 'sdwan_combined', cityId, deviceName, members, activeMemberSeq, activeInterface,
+        time: new Date().toISOString(),
+      }));
+
+      fastify.log.info(`SDWAN inject: ${deviceName} → ${members.length} üye, activeSeq=${activeMemberSeq}`);
+      return reply.send({ status: 'OK', cityId, deviceName, members, activeMemberSeq, activeInterface });
+    } catch (err) {
+      fastify.log.error(err, 'SDWAN inject error');
+      return reply.status(500).send({ error: 'DB error' });
+    }
+  });
+
+  // SDWAN geçiş geçmişi
+  fastify.get('/api/sdwan/history', async (request, reply) => {
+    const { cityId, limit = 200 } = request.query as { cityId?: string; limit?: number };
+    try {
+      let query = `
+        SELECT h.ID as id, h.CityID as city_id, c.CityName as city_name,
+               h.FromInterface as from_interface, h.ToInterface as to_interface,
+               h.ActiveSeqID as active_seq_id, h.RecordedAt as recorded_at
+        FROM SdwanHistory h
+        JOIN Cities c ON c.CityID = h.CityID
+      `;
+      const params: any[] = [];
+      if (cityId) { query += ` WHERE h.CityID = $1`; params.push(Number(cityId)); }
+      query += ` ORDER BY h.RecordedAt DESC LIMIT $${params.length + 1}`;
+      params.push(Number(limit));
+      const { rows } = await fastify.pg.query(query, params);
+      return reply.send(rows);
+    } catch (err) {
+      fastify.log.error(err, 'SDWAN history API error');
+      return reply.status(500).send({ error: 'SDWAN geçmiş alınamadı' });
+    }
+  });
+
   // Tüm misyonların SDWAN durumunu tek sorguda döndür
   fastify.get('/api/sdwan', async (_request, reply) => {
     try {
@@ -1015,11 +1334,20 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
         ALTER TABLE Cities ADD COLUMN IF NOT EXISTS DeviceName VARCHAR(100);
       `);
       await fastify.pg.query(`
+        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS IsStarlink BOOLEAN NOT NULL DEFAULT FALSE;
+      `);
+      await fastify.pg.query(`
+        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS SatelliteType VARCHAR(50) DEFAULT NULL;
+      `);
+      await fastify.pg.query(`
+        UPDATE Cities SET SatelliteType = 'starlink' WHERE IsStarlink = TRUE AND SatelliteType IS NULL;
+      `);
+      await fastify.pg.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_cities_devicename
           ON Cities (UPPER(DeviceName))
           WHERE DeviceName IS NOT NULL AND DeviceName <> '';
       `);
-      fastify.log.info('Migration OK: Cities.DeviceName kolonu hazır.');
+      fastify.log.info('Migration OK: Cities.DeviceName + SatelliteType kolonları hazır.');
     } catch (err) {
       fastify.log.error(err, 'Migration failed: Cities.DeviceName');
     }
@@ -1044,9 +1372,27 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
           UpdatedAt       TIMESTAMPTZ DEFAULT NOW()
         )
       `);
-      fastify.log.info('Migration OK: SdwanMembers + SdwanStatus tabloları hazır.');
+      await fastify.pg.query(`
+        CREATE TABLE IF NOT EXISTS SdwanHistory (
+          ID              SERIAL PRIMARY KEY,
+          CityID          INTEGER REFERENCES Cities(CityID) ON DELETE CASCADE,
+          FromInterface   VARCHAR(100),
+          ToInterface     VARCHAR(100),
+          ActiveSeqID     INTEGER,
+          RecordedAt      TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await fastify.pg.query(`
+        CREATE INDEX IF NOT EXISTS idx_sdwanhistory_city ON SdwanHistory (CityID, RecordedAt DESC)
+      `);
+      fastify.log.info('Migration OK: SdwanMembers + SdwanStatus + SdwanHistory tabloları hazır.');
     } catch (err) {
       fastify.log.error(err, 'Migration failed: SDWAN tables');
+    }
+    // ── Log temizleme — pg hazır olduktan sonra çalıştır ──
+    if (!opts.testing) {
+      purgeOldLogs();
+      setInterval(purgeOldLogs, 24 * 60 * 60 * 1000);
     }
     // ── Index doğrulama ──
     try {
