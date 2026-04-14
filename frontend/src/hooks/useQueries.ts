@@ -48,10 +48,10 @@ export const useDashboardData = (range?: DateRange) =>
   });
 
 // Rapor sayfasında seçilen filtreye göre veri getirme
-export const useReportsData = (filters: Filters, shouldFetch: boolean) =>
+export const useReportsData = (filters: Filters, fetchKey: number) =>
   useQuery({
-    queryKey: ['reportsData', filters],
-    enabled: shouldFetch,
+    queryKey: ['reportsData', filters, fetchKey],
+    enabled: fetchKey > 0,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.continent) params.append('continent', filters.continent);
@@ -135,5 +135,5 @@ export const useSdwan = () =>
     queryKey: ['sdwan'],
     queryFn: async () => (await axios.get(`${API_BASE}/sdwan`)).data,
     staleTime: 15_000,
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });

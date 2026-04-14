@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.3.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.3.0)
+[![Version](https://img.shields.io/badge/version-1.4.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.4.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -268,6 +268,47 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.4.0 — 2026-04-14
+
+**Advanced Map Intelligence, SDWAN History & LogViewer Overhaul**
+
+#### 🗺️ MapView — Satellite & Speed Filters
+- **Satellite Filter** — New bottom-right filter panel to show only Starlink or Türksat missions; custom SVG icons (orbital rings for Starlink, crescent+star for Türksat)
+- **Speed Tier Filter** — Filter missions by performance band: Excellent (≥60 Mbps) / Good (≥30 Mbps) / Poor / No Data
+- **Interface Type Guesser** (`guessIfaceType`) — Heuristic regex classifies active SDWAN interface as GSM / HUB / METRO from raw interface name
+- Stacked filter panels with active-count badge; panels close independently
+- `getBestSpeed` helper picks highest download across GSM / Metro / Hub for color-coded marker overlay
+
+#### 🔀 SDWAN Backend — History Tracking & JSON Format
+- **SdwanHistory table** populated on every active-interface change: stores `FromInterface → ToInterface` transitions with timestamp
+- **`parseSdwanJson()`** — New parser for JSON-format SDWAN payloads (`{deviceName, members:[…], activeMemberSeq}`); supports multiple field name variants
+- **`detectPayloadType()`** extended — recognises `sdwan_json` format; CLI-pattern detection hardened with regex for `diagnose sys session` and `show system sdwan`
+- Webhook ring buffer (10 entries) stores recent raw payloads for diagnostics
+
+#### 🏗️ Backend — Redis Device Cache & Webhook Logging
+- **Redis CityID cache** (`cityid:<DEVICE>`, 1h TTL) — avoids DB round-trip on every webhook; null results intentionally **not cached** so newly-added missions are matched immediately
+- **WebhookLogs DB insert** — every incoming webhook persisted with SourceIP, RawPayload, ParsedContext for audit trail
+- `onRequest` hook captures all webhooks into ring buffer before routing
+- SDWAN upsert now reads previous `ActiveInterface` and only writes history row when interface actually changes
+
+#### 📋 LogViewer — Time Range & Diagnostics Tab
+- **Time-range selector** — 15m / 1h / 6h / 24h / 7d / 30d presets for both Webhook and System log tabs; defaults to last 30 days
+- **Diagnostics Tab** (`DIAG`) — Fetches `/api/debug/webhook-last` ring buffer; shows raw last-10 webhooks for live troubleshooting
+- Active filter count badge on filter panel toggle button
+- `unknownOnly` quick-filter to surface unmatched device webhooks
+- Severity filter (`ALL / INFO / WARN / ERROR`) for System log tab
+
+#### 📊 Reports & Dashboard Polish
+- Reports export and filter state preserved across tab switches
+- Dashboard summary cards updated to reflect Hub connection data
+- MissionManager and AdminSettings minor UX fixes
+- `index.css` transitions and animation consistency improvements
+
+#### 🧪 Tests
+- `types.test.ts` updated to cover new `satellite_type`, `hub_*` fields and SDWAN interface type guards
+
+---
 
 ### v1.3.0 — 2026-04-09
 

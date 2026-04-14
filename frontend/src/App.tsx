@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { ShieldCheck, Map as MapIcon, BarChart3, LayoutDashboard, List, Settings2, Activity, GitBranch } from 'lucide-react';
@@ -23,6 +23,7 @@ const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${wind
 interface AppSettings {
   showFlags: boolean;
   showHeatmap: boolean;
+  showArcs: boolean;
   theme?: 'dark' | 'light';
   merkezFW?: { lat: number; lon: number; name: string };
 }
@@ -61,8 +62,8 @@ function AppContent() {
     try {
       const s = localStorage.getItem('speedtest_settings');
       const parsed = s ? JSON.parse(s) : null;
-      return parsed ?? { showFlags: true, showHeatmap: false, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } };
-    } catch { return { showFlags: true, showHeatmap: false, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } }; }
+      return parsed ?? { showFlags: true, showHeatmap: false, showArcs: true, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } };
+    } catch { return { showFlags: true, showHeatmap: false, showArcs: true, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } }; }
   });
 
   useEffect(() => {
@@ -78,9 +79,7 @@ function AppContent() {
 
   // Local states for UI and transient actions
   const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
-  const [statsGsm, setStatsGsm] = useState<StatPoint[]>([]);
-  const [statsMetro, setStatsMetro] = useState<StatPoint[]>([]);
-  const [statsHub, setStatsHub] = useState<StatPoint[]>([]);
+  const [stats, setStats] = useState<Record<VpnTab, StatPoint[]>>({ GSM: [], METRO: [], HUB: [] });
   const [selectedVpnTab, setSelectedVpnTab] = useState<VpnTab>('GSM');
   const [popupInfo, setPopupInfo] = useState<Mission | null>(null);
   const [activityFeed, setActivityFeed] = useState<ActivityEntry[]>([]);
@@ -92,9 +91,9 @@ function AppContent() {
   const { summary = null, continentReports = [], vpntypeReports = [] } = dashData || {};
 
   // Reports state map
-  const [shouldFetchRep, setShouldFetchRep] = useState(false);
+  const [repFetchKey, setRepFetchKey] = useState(0);
   const [filters, setFilters] = useState<Filters>({ continent: '', country: '', missionId: '', vpnType: '', startDate: '', endDate: '', reportType: 'summary', minSpeed: '', maxSpeed: '' });
-  const { data: repData, isFetching: repLoading } = useReportsData(filters, shouldFetchRep);
+  const { data: repData, isFetching: repLoading } = useReportsData(filters, repFetchKey);
   const { data: sparklines } = useSparklines(filters);
   
   const [mapFilter, setMapFilter] = useState<{ continent: string; country: string; mission: string }>({ continent: '', country: '', mission: '' });
@@ -105,25 +104,7 @@ function AppContent() {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | null>(null);
 
-  // Sayfa açılışında son kayıtları REST'ten çek → activityFeed boş görünmez
-  useEffect(() => {
-    const loadInitialActivity = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/activity/recent`);
-        if (res.ok) {
-          const data: ActivityEntry[] = await res.json();
-          setActivityFeed(data);
-        }
-      } catch {
-        // endpoint yoksa sessizce geç
-      }
-    };
-    loadInitialActivity();
-    connectWS();
-    return () => { ws.current?.close(); if (reconnectTimer.current) window.clearTimeout(reconnectTimer.current); };
-  }, []);
-
-  const connectWS = () => {
+  const connectWS = useCallback(() => {
     ws.current = new WebSocket(WS_URL);
     ws.current.onmessage = (event) => {
       const msg = JSON.parse(event.data) as any;
@@ -142,48 +123,46 @@ function AppContent() {
       // Normal speedtest güncellemesi (type === 'speedtest' veya eski format)
       const u = msg as { cityId: number; vpnTypeId: number; vpnTypeName?: string; download: number; upload: number; latency: number; time: string; deviceName: string };
       const vpnName = (u.vpnTypeName || '').toUpperCase();
-      const isGsm   = u.vpnTypeId === 2 || vpnName === 'GSM';
-      const isMetro = u.vpnTypeId === 1 || vpnName === 'METRO';
+      const isGsm   = vpnName === 'GSM';
+      const isMetro = vpnName === 'METRO';
       const isHub   = vpnName === 'HUB';
 
-      // Update missions cache directly
+      const speedPatch = {
+        ...(isGsm  ? { gsm_download: u.download, gsm_upload: u.upload, gsm_latency: u.latency, gsm_test_time: u.time, gsm_device: u.deviceName } : {}),
+        ...(isMetro ? { metro_download: u.download, metro_upload: u.upload, metro_latency: u.latency, metro_test_time: u.time, metro_device: u.deviceName } : {}),
+        ...(isHub   ? { hub_download: u.download, hub_upload: u.upload, hub_latency: u.latency, hub_test_time: u.time, hub_device: u.deviceName } : {}),
+      };
+
+      // Missions cache'ini güncelle — missionName'i buradan al (race condition yok)
+      let missionName = '';
       qc.setQueryData<Mission[]>(['missions'], (oldMissions) => {
         if (!oldMissions) return [];
         return oldMissions.map((m) => {
           if (m.id !== u.cityId) return m;
-          return {
-            ...m,
-            ...(isGsm  ? { gsm_download: u.download, gsm_upload: u.upload, gsm_latency: u.latency, gsm_test_time: u.time, gsm_device: u.deviceName } : {}),
-            ...(isMetro ? { metro_download: u.download, metro_upload: u.upload, metro_latency: u.latency, metro_test_time: u.time, metro_device: u.deviceName } : {}),
-            ...(isHub   ? { hub_download: u.download, hub_upload: u.upload, hub_latency: u.latency, hub_test_time: u.time, hub_device: u.deviceName } : {}),
-          };
+          missionName = m.name;
+          return { ...m, ...speedPatch };
         });
       });
 
       setSelectedMission(prev => {
         if (!prev || prev.id !== u.cityId) return prev;
-        return {
-          ...prev,
-          ...(isGsm  ? { gsm_download: u.download, gsm_upload: u.upload, gsm_latency: u.latency, gsm_test_time: u.time, gsm_device: u.deviceName } : {}),
-          ...(isMetro ? { metro_download: u.download, metro_upload: u.upload, metro_latency: u.latency, metro_test_time: u.time, metro_device: u.deviceName } : {}),
-          ...(isHub   ? { hub_download: u.download, hub_upload: u.upload, hub_latency: u.latency, hub_test_time: u.time, hub_device: u.deviceName } : {}),
-        };
+        return { ...prev, ...speedPatch };
       });
 
-      if (isGsm)  setStatsGsm(p  => [...p.slice(-19), { time: new Date(u.time).toLocaleTimeString('tr-TR'), download: u.download, upload: u.upload, latency: u.latency, vpn_type: 'GSM' }]);
-      if (isMetro) setStatsMetro(p => [...p.slice(-19), { time: new Date(u.time).toLocaleTimeString('tr-TR'), download: u.download, upload: u.upload, latency: u.latency, vpn_type: 'METRO' }]);
-      if (isHub)  setStatsHub(p  => [...p.slice(-19), { time: new Date(u.time).toLocaleTimeString('tr-TR'), download: u.download, upload: u.upload, latency: u.latency, vpn_type: 'HUB' }]);
+      const vpnKey: VpnTab | null = isGsm ? 'GSM' : isMetro ? 'METRO' : isHub ? 'HUB' : null;
+      if (vpnKey) {
+        const point: StatPoint = { time: new Date(u.time).toLocaleTimeString('tr-TR'), download: u.download, upload: u.upload, latency: u.latency, vpn_type: vpnKey };
+        setStats(p => ({ ...p, [vpnKey]: [...p[vpnKey].slice(-19), point] }));
+      }
 
-      // Activity feed
-      const currentMissions: Mission[] = qc.getQueryData(['missions']) || [];
-      const mission = currentMissions.find(m => m.id === u.cityId);
-      if (mission) {
+      // Activity feed — missionName setQueryData içinde güvenli şekilde alındı
+      if (missionName) {
         setActivityFeed(af => [
           {
-            id: `${u.cityId}-${u.vpnTypeId}-${Date.now()}`,
+            id: `${u.cityId}-${vpnKey}-${Date.now()}`,
             cityId: u.cityId,
-            missionName: mission.name,
-            vpnType: isGsm ? 'GSM' : 'METRO',
+            missionName,
+            vpnType: isGsm ? 'GSM' : isHub ? 'HUB' : 'METRO',
             download: u.download,
             upload: u.upload,
             latency: u.latency,
@@ -199,7 +178,25 @@ function AppContent() {
       qc.invalidateQueries({ queryKey: ['sparklines'] });
     };
     ws.current.onclose = () => { reconnectTimer.current = window.setTimeout(connectWS, 3000); };
-  };
+  }, [qc]);
+
+  // Sayfa açılışında son kayıtları REST'ten çek → activityFeed boş görünmez
+  useEffect(() => {
+    const loadInitialActivity = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/activity/recent`);
+        if (res.ok) {
+          const data: ActivityEntry[] = await res.json();
+          setActivityFeed(data);
+        }
+      } catch {
+        // endpoint yoksa sessizce geç
+      }
+    };
+    loadInitialActivity();
+    connectWS();
+    return () => { ws.current?.close(); if (reconnectTimer.current) window.clearTimeout(reconnectTimer.current); };
+  }, [connectWS]);
 
   const { addCity, updateCity, deleteCity } = useCityMutations();
 
@@ -208,8 +205,7 @@ function AppContent() {
   };
 
   const handleApplyReport = () => {
-    setShouldFetchRep(true);
-    setTimeout(() => setShouldFetchRep(false), 100); // trigger hook once
+    setRepFetchKey(k => k + 1);
   };
 
   const onClearSelection = () => {
@@ -224,13 +220,15 @@ function AppContent() {
       onClearSelection();
       return;
     }
-    setSelectedMission(m); setPopupInfo(m); setSelectedVpnTab('GSM'); setStatsGsm([]); setStatsMetro([]); setStatsHub([]);
+    setSelectedMission(m); setPopupInfo(m); setSelectedVpnTab('GSM'); setStats({ GSM: [], METRO: [], HUB: [] });
     try {
       const r = await axios.get(`${API_BASE}/stats/${m.id}`);
       const all: StatPoint[] = r.data.map((s: StatPoint) => ({ ...s, time: new Date(s.time).toLocaleTimeString('tr-TR') }));
-      setStatsGsm(all.filter(s => s.vpn_type === 'GSM').slice(-20));
-      setStatsMetro(all.filter(s => s.vpn_type === 'METRO').slice(-20));
-      setStatsHub(all.filter(s => s.vpn_type === 'HUB').slice(-20));
+      setStats({
+        GSM:   all.filter(s => s.vpn_type === 'GSM').slice(-20),
+        METRO: all.filter(s => s.vpn_type === 'METRO').slice(-20),
+        HUB:   all.filter(s => s.vpn_type === 'HUB').slice(-20),
+      });
     } catch {}
   };
 
@@ -385,15 +383,16 @@ function AppContent() {
             missions={missions}
             filteredMissions={filteredMissions}
             selectedMission={selectedMission}
-            statsGsm={statsGsm}
-            statsMetro={statsMetro}
-            statsHub={statsHub}
+            statsGsm={stats.GSM}
+            statsMetro={stats.METRO}
+            statsHub={stats.HUB}
             selectedVpnTab={selectedVpnTab}
             popupInfo={popupInfo}
             filterOptions={filterOptions}
             mapFilter={mapFilter}
             showFlags={appSettings.showFlags}
             showHeatmap={appSettings.showHeatmap}
+            showArcs={appSettings.showArcs ?? true}
             theme={appSettings.theme || 'dark'}
             merkezFW={
               merkezFWMission

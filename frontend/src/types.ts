@@ -1,6 +1,7 @@
 export type View = 'map' | 'dashboard' | 'reports' | 'missions' | 'settings' | 'logs' | 'sdwan';
 export type ReportType = 'summary' | 'missions' | 'countries' | 'continents' | 'vpntypes' | 'all';
 export type VpnTab = 'GSM' | 'METRO' | 'HUB';
+export type SatelliteType = 'starlink' | 'turksat';
 
 export interface Mission {
   id: number;
@@ -25,6 +26,8 @@ export interface Mission {
   hub_latency?: number | null;
   hub_device?: string | null;
   hub_test_time?: string | null;
+  is_starlink?: boolean;
+  satellite_type?: SatelliteType | null;
 }
 
 export interface StatPoint {
@@ -63,6 +66,8 @@ export interface CityRow {
   lat: number | null;
   lon: number | null;
   device_name?: string | null; // FortiGate cihaz adı — boşsa CityName ile eşleştirilir
+  is_starlink?: boolean;
+  satellite_type?: SatelliteType | null;
 }
 
 export interface SdwanMember {
@@ -78,6 +83,16 @@ export interface SdwanRow {
   active_interface: string | null;
   updated_at: string | null;
   members: SdwanMember[] | null;
+}
+
+export interface SdwanHistoryEntry {
+  id: number;
+  city_id: number;
+  city_name: string;
+  from_interface: string | null;
+  to_interface: string;
+  active_seq_id: number | null;
+  recorded_at: string;
 }
 
 export interface ActivityEntry {
@@ -103,11 +118,11 @@ export const getBestDownload = (m: Mission) =>
   Math.max(Number(m.gsm_download ?? 0), Number(m.metro_download ?? 0), Number(m.hub_download ?? 0));
 
 export const getBestUpload = (m: Mission) =>
-  Math.max(Number(m.gsm_upload ?? 0), Number(m.metro_upload ?? 0));
+  Math.max(Number(m.gsm_upload ?? 0), Number(m.metro_upload ?? 0), Number(m.hub_upload ?? 0));
 
 export const getMarkerColor = (m: Mission) => {
   const best = getBestDownload(m);
-  return best >= 60 ? '#22c55e' : best >= 30 ? '#f59e0b' : '#ef4444';
+  return best >= 60 ? '#38bdf8' : best >= 30 ? '#f97316' : '#ef4444';
 };
 
 export const getQualityClass = (dl: number | null | undefined) => {

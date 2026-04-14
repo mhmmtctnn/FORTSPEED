@@ -1,8 +1,9 @@
-import { Settings2, Map as MapIcon, Eye, EyeOff } from 'lucide-react';
+import { Settings2, Map as MapIcon, Eye, EyeOff, Zap } from 'lucide-react';
 
 interface AppSettings {
   showFlags: boolean;
   showHeatmap: boolean;
+  showArcs: boolean;
   theme?: 'dark' | 'light';
 }
 
@@ -123,6 +124,38 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
           >
             {settings.showFlags ? <Eye size={14} /> : <EyeOff size={14} />}
             {settings.showFlags ? 'Açık' : 'Kapalı'}
+          </button>
+        </div>
+
+        {/* Arc (Ping) Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Zap size={14} color="#38bdf8" /> Merkez Ping Animasyonları
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Misyonlardan merkeze akan hız rengi çizgilerini (arc) göster
+            </div>
+          </div>
+          <button
+            onClick={() => toggle('showArcs')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 16px',
+              background: settings.showArcs ? 'rgba(56,189,248,0.12)' : 'var(--bg-elevated)',
+              color: settings.showArcs ? '#38bdf8' : 'var(--text-muted)',
+              border: `1px solid ${settings.showArcs ? 'rgba(56,189,248,0.35)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              transition: 'var(--transition)',
+              flexShrink: 0,
+            }}
+          >
+            {settings.showArcs ? <Eye size={14} /> : <EyeOff size={14} />}
+            {settings.showArcs ? 'Açık' : 'Kapalı'}
           </button>
         </div>
 

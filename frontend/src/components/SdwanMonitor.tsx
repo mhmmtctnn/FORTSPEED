@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { GitBranch, RefreshCw, Search, X, Wifi, Signal, Activity } from 'lucide-react';
-import { SdwanRow } from '../types';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { GitBranch, RefreshCw, Search, X, Wifi, Signal, Activity, History, ArrowRight } from 'lucide-react';
+import { SdwanRow, SdwanHistoryEntry } from '../types';
 
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -10,13 +10,54 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString('tr-TR');
 }
 
-/** Mevcut interface'in VPN tipini (GSM/METRO) tahmin et */
-function guessType(iface: string | null): 'GSM' | 'METRO' | null {
+/** Interface adından VPN tipini tahmin et */
+function guessType(iface: string | null): 'GSM' | 'HUB' | 'METRO' | null {
   if (!iface) return null;
   const u = iface.toUpperCase();
   if (/GSM|LTE|4G|5G|CELL|MOBILE/.test(u)) return 'GSM';
-  if (/METRO|MPLS|FIBER|LEASED|KARASAL|HUB/.test(u)) return 'METRO';
+  if (/\bHUB\b|_HUB|HUB_/.test(u)) return 'HUB';
+  if (/METRO|MPLS|FIBER|LEASED|KARASAL/.test(u)) return 'METRO';
   return null;
+}
+
+function typeColor(t: 'GSM' | 'HUB' | 'METRO' | null) {
+  if (t === 'GSM')   return 'var(--purple)';
+  if (t === 'HUB')   return 'var(--green)';
+  if (t === 'METRO') return 'var(--accent)';
+  return 'var(--text-muted)';
+}
+
+// Gradient/border için sabit hex renk (CSS var() hex-append ile çalışmaz)
+function typeHex(t: 'GSM' | 'HUB' | 'METRO' | null) {
+  if (t === 'GSM')   return '#a855f7';
+  if (t === 'HUB')   return '#06b6d4';
+  if (t === 'METRO') return '#38bdf8';
+  return '#64748b';
+}
+
+function typeBg(t: 'GSM' | 'HUB' | 'METRO' | null) {
+  if (t === 'GSM')  return 'rgba(168,85,247,0.15)';
+  if (t === 'HUB')  return 'rgba(6,182,212,0.15)';
+  if (t === 'METRO') return 'rgba(56,189,248,0.12)';
+  return 'rgba(255,255,255,0.05)';
+}
+
+function typeBorder(t: 'GSM' | 'HUB' | 'METRO' | null) {
+  if (t === 'GSM')  return 'rgba(168,85,247,0.25)';
+  if (t === 'HUB')  return 'rgba(34,197,94,0.25)';
+  if (t === 'METRO') return 'rgba(56,189,248,0.2)';
+  return 'var(--border)';
+}
+
+function typeIcon(t: 'GSM' | 'HUB' | 'METRO' | null, size = 9, color?: string) {
+  const props = { size, ...(color ? { color } : {}) };
+  if (t === 'GSM')  return <Signal {...props} />;
+  if (t === 'HUB')  return <GitBranch {...props} />;
+  return <Wifi {...props} />;
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 interface Props {
@@ -24,18 +65,25 @@ interface Props {
 }
 
 export const SdwanMonitor = ({ initialData = [] }: Props) => {
-  const [rows, setRows]       = useState<SdwanRow[]>(initialData);
-  const [loading, setLoading] = useState(false);
-  const [refresh, setRefresh] = useState(new Date());
-  const [search, setSearch]   = useState('');
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [rows, setRows]           = useState<SdwanRow[]>(initialData);
+  const [history, setHistory]     = useState<SdwanHistoryEntry[]>([]);
+  const [loading, setLoading]     = useState(false);
+  const [refresh, setRefresh]     = useState(new Date());
+  const [search, setSearch]       = useState('');
+  const [expanded, setExpanded]   = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'status' | 'history'>('status');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/sdwan');
-      const data = await res.json();
-      if (Array.isArray(data)) setRows(data);
+      const [sdwanRes, histRes] = await Promise.all([
+        fetch('/api/sdwan'),
+        fetch('/api/sdwan/history?limit=200'),
+      ]);
+      const sdwanData = await sdwanRes.json();
+      const histData  = await histRes.json();
+      if (Array.isArray(sdwanData)) setRows(sdwanData);
+      if (Array.isArray(histData))  setHistory(histData);
       setRefresh(new Date());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -70,18 +118,18 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
     return () => { ws?.close(); clearTimeout(retryTimer); };
   }, [fetchData]);
 
-  const filtered = rows.filter(r => {
-    if (!search) return true;
+  const filtered = useMemo(() => {
+    if (!search) return rows;
     const q = search.toLowerCase();
-    return (
+    return rows.filter(r =>
       r.city_name.toLowerCase().includes(q) ||
       (r.active_interface || '').toLowerCase().includes(q) ||
       (r.members || []).some(m => m.interface.toLowerCase().includes(q))
     );
-  });
+  }, [rows, search]);
 
-  const withData    = filtered.filter(r => r.members && r.members.length > 0);
-  const withoutData = filtered.filter(r => !r.members || r.members.length === 0);
+  const withData    = useMemo(() => filtered.filter(r => r.members && r.members.length > 0), [filtered]);
+  const withoutData = useMemo(() => filtered.filter(r => !r.members || r.members.length === 0), [filtered]);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }} className="fade-in">
@@ -136,7 +184,116 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
       {/* ── Content ── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 32px' }}>
 
-        {/* Sütun başlıkları */}
+        {/* Tab geçişi — sticky */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 12, position: 'sticky', top: 0, zIndex: 11, background: 'var(--bg-base)', paddingBottom: 8, paddingTop: 4 }}>
+          {([
+            { key: 'status',  label: 'Canlı Durum', icon: <Activity size={13} /> },
+            { key: 'history', label: 'Geçiş Geçmişi', icon: <History size={13} /> },
+          ] as const).map(t => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+                background: activeTab === t.key ? 'var(--accent)' : 'var(--bg-elevated)',
+                border: `1px solid ${activeTab === t.key ? 'var(--accent)' : 'var(--border)'}`,
+                color: activeTab === t.key ? '#fff' : 'var(--text-secondary)',
+                fontWeight: activeTab === t.key ? 700 : 400,
+                fontSize: '0.8rem', cursor: 'pointer',
+              }}>
+              {t.icon} {t.label}
+              {t.key === 'history' && history.length > 0 && (
+                <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 99, fontSize: '0.65rem', padding: '0 5px', fontWeight: 800 }}>
+                  {history.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Geçiş Geçmişi Tab ── */}
+        {activeTab === 'history' && (
+          <div className="fade-in">
+            {history.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '60px 0', color: 'var(--text-muted)' }}>
+                <History size={32} style={{ opacity: 0.2 }} />
+                <p style={{ fontSize: 13 }}>Henüz üye geçişi kaydedilmedi</p>
+                <p style={{ fontSize: 11 }}>SDWAN aktif üye değiştiğinde burada görünecek</p>
+              </div>
+            ) : (
+              <div className="glass-card" style={{ overflow: 'hidden' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 140 }}>Zaman</th>
+                      <th>Misyon</th>
+                      <th>Önceki Interface</th>
+                      <th style={{ width: 24 }}></th>
+                      <th>Yeni Interface</th>
+                      <th style={{ width: 60, textAlign: 'right' }}>Seq</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history
+                      .filter(h => {
+                        if (!search) return true;
+                        const q = search.toLowerCase();
+                        return h.city_name.toLowerCase().includes(q) ||
+                          (h.from_interface || '').toLowerCase().includes(q) ||
+                          h.to_interface.toLowerCase().includes(q);
+                      })
+                      .map(h => {
+                        const fromType = guessType(h.from_interface);
+                        const toType   = guessType(h.to_interface);
+                        return (
+                          <tr key={h.id}>
+                            <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                              {formatDateTime(h.recorded_at)}
+                            </td>
+                            <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{h.city_name}</td>
+                            <td>
+                              {h.from_interface ? (
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+                                  background: typeBg(fromType), color: typeColor(fromType),
+                                  border: `1px solid ${typeBorder(fromType)}`,
+                                }}>
+                                  {typeIcon(fromType)} {h.from_interface}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>İlk kayıt</span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                              <ArrowRight size={13} />
+                            </td>
+                            <td>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                                background: typeBg(toType), color: typeColor(toType),
+                                border: `1px solid ${typeBorder(toType)}`,
+                              }}>
+                                {typeIcon(toType)} {h.to_interface}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                              #{h.active_seq_id ?? '–'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Canlı Durum Tab ── */}
+        {activeTab === 'status' && <>
+
+        {/* Sütun başlıkları — sticky */}
         {withData.length > 0 && (
           <div style={{
             display: 'grid', gridTemplateColumns: '200px 180px 1fr 100px',
@@ -144,6 +301,8 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
             fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
             letterSpacing: '0.07em', color: 'var(--text-muted)',
             borderBottom: '1px solid var(--border)', marginBottom: 4,
+            position: 'sticky', top: 44, zIndex: 10,
+            background: 'var(--bg-base)',
           }}>
             <span>Misyon</span><span>Aktif Interface</span><span>Üyeler</span><span style={{ textAlign: 'right' }}>Güncelleme</span>
           </div>
@@ -182,18 +341,14 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                   {/* Aktif interface */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {row.active_interface ? (
-                      <>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4,
-                          background: vpnType === 'GSM' ? 'rgba(168,85,247,0.15)' : vpnType === 'METRO' ? 'rgba(56,189,248,0.12)' : 'rgba(245,158,11,0.15)',
-                          color: vpnType === 'GSM' ? 'var(--purple)' : vpnType === 'METRO' ? 'var(--accent)' : 'var(--amber)',
-                          border: `1px solid ${vpnType === 'GSM' ? 'rgba(168,85,247,0.25)' : vpnType === 'METRO' ? 'rgba(56,189,248,0.2)' : 'rgba(245,158,11,0.3)'}`,
-                        }}>
-                          {vpnType === 'GSM' ? <Signal size={9} /> : <Wifi size={9} />}
-                          {row.active_interface}
-                        </span>
-                      </>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4,
+                        background: typeBg(vpnType), color: typeColor(vpnType),
+                        border: `1px solid ${typeBorder(vpnType)}`,
+                      }}>
+                        {typeIcon(vpnType)} {row.active_interface}
+                      </span>
                     ) : (
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>—</span>
                     )}
@@ -208,13 +363,9 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                         <span key={m.seq_id} style={{
                           fontSize: 10, fontWeight: isActive ? 700 : 400,
                           padding: '2px 6px', borderRadius: 3,
-                          background: isActive
-                            ? (t === 'GSM' ? 'rgba(168,85,247,0.2)' : t === 'METRO' ? 'rgba(56,189,248,0.15)' : 'rgba(245,158,11,0.2)')
-                            : 'var(--bg-elevated)',
-                          color: isActive
-                            ? (t === 'GSM' ? 'var(--purple)' : t === 'METRO' ? 'var(--accent)' : 'var(--amber)')
-                            : 'var(--text-muted)',
-                          border: isActive ? '1px solid currentColor' : '1px solid transparent',
+                          background: isActive ? typeBg(t) : 'var(--bg-elevated)',
+                          color: isActive ? typeColor(t) : 'var(--text-muted)',
+                          border: isActive ? `1px solid ${typeBorder(t)}` : '1px solid transparent',
                           opacity: isActive ? 1 : 0.7,
                         }}>
                           {m.seq_id}. {m.interface}
@@ -235,11 +386,12 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                     <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 10 }}>
                       SDWAN Üyeleri — Sıra / Interface / Maliyet
                     </p>
+
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {members.map(m => {
                         const isActive = m.seq_id === row.active_seq_id;
                         const t = guessType(m.interface);
-                        const barColor = t === 'GSM' ? 'var(--purple)' : t === 'METRO' ? 'var(--accent)' : 'var(--amber)';
+                        const barHex = typeHex(t);
                         return (
                           <div key={m.seq_id} style={{
                             display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px',
@@ -250,9 +402,9 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                               #{m.seq_id}
                             </span>
                             {/* Gradient bar */}
-                            <div style={{ flex: 1, height: 28, borderRadius: 4, background: `linear-gradient(90deg, ${barColor}22, ${barColor}44)`, border: `1px solid ${barColor}33`, display: 'flex', alignItems: 'center', padding: '0 10px', gap: 8 }}>
-                              {t === 'GSM' ? <Signal size={11} color={barColor} /> : <Wifi size={11} color={barColor} />}
-                              <span style={{ fontSize: 12, fontWeight: isActive ? 800 : 600, color: isActive ? barColor : 'var(--text-primary)' }}>
+                            <div style={{ flex: 1, height: 28, borderRadius: 4, background: `linear-gradient(90deg, ${barHex}22, ${barHex}44)`, border: `1px solid ${barHex}33`, display: 'flex', alignItems: 'center', padding: '0 10px', gap: 8 }}>
+                              {typeIcon(t, 11, barHex)}
+                              <span style={{ fontSize: 12, fontWeight: isActive ? 800 : 600, color: isActive ? barHex : 'var(--text-primary)' }}>
                                 {m.interface}
                               </span>
                             </div>
@@ -277,6 +429,48 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                         Son webhook: {new Date(row.updated_at).toLocaleString('tr-TR')}
                       </p>
                     )}
+
+                    {/* Bu misyonun geçiş geçmişi */}
+                    {(() => {
+                      const cityHistory = history.filter(h => h.city_id === row.city_id);
+                      if (cityHistory.length === 0) return null;
+                      return (
+                        <div style={{ marginTop: 16 }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <History size={10} /> Geçiş Geçmişi ({cityHistory.length})
+                          </p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {cityHistory.slice(0, 10).map(h => {
+                              const fromType = guessType(h.from_interface);
+                              const toType   = guessType(h.to_interface);
+                              return (
+                                <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 12 }}>
+                                  <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 110, whiteSpace: 'nowrap' }}>
+                                    {formatDateTime(h.recorded_at)}
+                                  </span>
+                                  {h.from_interface ? (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 3, background: typeBg(fromType), color: typeColor(fromType), border: `1px solid ${typeBorder(fromType)}`, fontSize: 11, fontWeight: 600 }}>
+                                      {typeIcon(fromType)} {h.from_interface}
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>İlk kayıt</span>
+                                  )}
+                                  <ArrowRight size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 3, background: typeBg(toType), color: typeColor(toType), border: `1px solid ${typeBorder(toType)}`, fontSize: 11, fontWeight: 700 }}>
+                                    {typeIcon(toType)} {h.to_interface}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {cityHistory.length > 10 && (
+                              <p style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', padding: '4px 0' }}>
+                                ... ve {cityHistory.length - 10} eski geçiş daha
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -313,6 +507,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
             <p style={{ fontSize: 11 }}>FortiGate'den <code>config members</code> ve <code>sdwan_mbr_seq</code> içeren webhook gönderin</p>
           </div>
         )}
+        </>}
       </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

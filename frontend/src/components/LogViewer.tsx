@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Activity, RefreshCw, AlertTriangle, Wifi, Terminal,
   ChevronDown, ChevronUp, ArrowDown, ArrowUp,
-  Search, X, SlidersHorizontal, Clock, UserX, ExternalLink,
+  Search, X, SlidersHorizontal, Clock, UserX, ExternalLink, Stethoscope, CheckCircle, XCircle,
 } from 'lucide-react';
 
-type TabType   = 'WEBHOOK' | 'SYSTEM';
-type TimeRange = '15m' | '1h' | '6h' | '24h' | 'all';
+type TabType   = 'WEBHOOK' | 'SYSTEM' | 'DIAG';
+type TimeRange = '15m' | '1h' | '6h' | '24h' | '7d' | '30d';
 
 interface SystemLog {
   logid: number;
@@ -41,11 +41,13 @@ interface SystemFilters {
 }
 
 const TIME_LABELS: Record<TimeRange, string> = {
-  '15m': 'Son 15dk', '1h': 'Son 1sa', '6h': 'Son 6sa', '24h': 'Son 24sa', 'all': 'Tümü',
+  '15m': 'Son 15dk', '1h': 'Son 1sa', '6h': 'Son 6sa', '24h': 'Son 24sa',
+  '7d': 'Son 7 Gün', '30d': 'Son 30 Gün',
 };
 
 const TIME_MS: Record<TimeRange, number> = {
-  '15m': 15 * 60_000, '1h': 3_600_000, '6h': 21_600_000, '24h': 86_400_000, 'all': Infinity,
+  '15m': 15 * 60_000, '1h': 3_600_000, '6h': 21_600_000, '24h': 86_400_000,
+  '7d': 7 * 86_400_000, '30d': 30 * 86_400_000,
 };
 
 function timeAgo(iso: string): string {
@@ -65,15 +67,16 @@ const SEV_BG: Record<string, string> = {
   WARN:     'rgba(245,158,11,0.12)', INFO: 'rgba(56,189,248,0.08)',
 };
 
-const EMPTY_WHK: WebhookFilters = { text: '', device: '', vpnType: '', minSpeed: '', timeRange: 'all', unknownOnly: false };
-const EMPTY_SYS: SystemFilters  = { text: '', device: '', severity: 'ALL', timeRange: 'all' };
+const DEFAULT_TIME: TimeRange = '30d';
+const EMPTY_WHK: WebhookFilters = { text: '', device: '', vpnType: '', minSpeed: '', timeRange: DEFAULT_TIME, unknownOnly: false };
+const EMPTY_SYS: SystemFilters  = { text: '', device: '', severity: 'ALL', timeRange: DEFAULT_TIME };
 
 /* ─── küçük yardımcı: aktif filtre sayısı ─── */
 function whkActiveCount(f: WebhookFilters) {
-  return [f.text, f.device, f.vpnType, f.minSpeed, f.timeRange !== 'all', f.unknownOnly].filter(Boolean).length;
+  return [f.text, f.device, f.vpnType, f.minSpeed, f.timeRange !== DEFAULT_TIME, f.unknownOnly].filter(Boolean).length;
 }
 function sysActiveCount(f: SystemFilters) {
-  return [f.text, f.device, f.severity !== 'ALL', f.timeRange !== 'all'].filter(Boolean).length;
+  return [f.text, f.device, f.severity !== 'ALL', f.timeRange !== DEFAULT_TIME].filter(Boolean).length;
 }
 
 interface LogViewerProps {
@@ -91,6 +94,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
 
   const [whkF, setWhkF] = useState<WebhookFilters>(EMPTY_WHK);
   const [sysF, setSysF] = useState<SystemFilters>(EMPTY_SYS);
+  const [diag, setDiag] = useState<any>(null);
 
   /* ── fetch ── */
   const fetch_logs = useCallback(async () => {
@@ -106,6 +110,18 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
+
+  const fetch_diag = useCallback(async () => {
+    try {
+      const r = await fetch('/api/debug/webhook-last');
+      const d = await r.json();
+      setDiag(d);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'DIAG') fetch_diag();
+  }, [tab, fetch_diag]);
 
   useEffect(() => {
     fetch_logs();
@@ -145,7 +161,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
 
   /* ── filtrelenmiş webhook listesi ── */
   const filteredWhk = useMemo(() => {
-    const cutoff = whkF.timeRange === 'all' ? 0 : Date.now() - TIME_MS[whkF.timeRange];
+    const cutoff = Date.now() - TIME_MS[whkF.timeRange];
     const minSpd = whkF.minSpeed !== '' ? Number(whkF.minSpeed) : null;
     const q      = whkF.text.trim().toLowerCase();
 
@@ -153,7 +169,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
       const p = log.parsedcontext || {};
 
       // Zaman filtresi
-      if (cutoff > 0 && new Date(log.createdat).getTime() < cutoff) return false;
+      if (new Date(log.createdat).getTime() < cutoff) return false;
 
       // Cihaz seçimi (dropdown)
       if (whkF.device && p.deviceName !== whkF.device) return false;
@@ -190,12 +206,12 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
 
   /* ── filtrelenmiş system log listesi ── */
   const filteredSys = useMemo(() => {
-    const cutoff = sysF.timeRange === 'all' ? 0 : Date.now() - TIME_MS[sysF.timeRange];
+    const cutoff = Date.now() - TIME_MS[sysF.timeRange];
     const q      = sysF.text.trim().toLowerCase();
     const dq     = sysF.device.trim().toLowerCase();
 
     return sysLogs.filter(log => {
-      if (cutoff > 0 && new Date(log.createdat).getTime() < cutoff) return false;
+      if (new Date(log.createdat).getTime() < cutoff) return false;
       if (sysF.severity !== 'ALL' && log.severity !== sysF.severity) return false;
       if (q && !log.message.toLowerCase().includes(q)) return false;
       if (dq) {
@@ -248,9 +264,9 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs + Zaman seçici */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {(['WEBHOOK', 'SYSTEM'] as TabType[]).map(t => (
+          {(['WEBHOOK', 'SYSTEM'] as const).map(t => (
             <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`}
               onClick={() => { setTab(t); setExpanded(null); }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
@@ -261,17 +277,42 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                 color: tab === t ? 'white' : 'var(--text-muted)',
                 borderRadius: 10, padding: '0 6px', fontSize: 10, fontWeight: 700,
               }}>
-                {t === 'WEBHOOK' ? whkLogs.length : sysLogs.length}
+                {t === 'WEBHOOK' ? filteredWhk.length : filteredSys.length}
               </span>
             </button>
           ))}
+          <button className={`tab-btn ${tab === 'DIAG' ? 'active' : ''}`}
+            onClick={() => { setTab('DIAG'); setExpanded(null); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
+            <Stethoscope size={13} /> Tanı
+          </button>
 
-          {/* Filtre toggle */}
-          <button
+          {/* Zaman aralığı — DIAG sekmesinde gizle */}
+          <div style={{ marginLeft: 'auto', display: tab === 'DIAG' ? 'none' : 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 6px' }}>
+            <Clock size={11} color="var(--text-muted)" style={{ marginRight: 4 }} />
+            {(Object.keys(TIME_LABELS) as TimeRange[]).map(tr => {
+              const active = tab === 'WEBHOOK' ? whkF.timeRange === tr : sysF.timeRange === tr;
+              return (
+                <button key={tr}
+                  onClick={() => tab === 'WEBHOOK' ? setWhkF(f => ({ ...f, timeRange: tr })) : setSysF(f => ({ ...f, timeRange: tr }))}
+                  style={{
+                    padding: '3px 9px', borderRadius: 4, fontSize: 11, fontWeight: active ? 700 : 400,
+                    background: active ? 'var(--accent)' : 'transparent',
+                    color: active ? 'white' : 'var(--text-muted)',
+                    border: 'none', cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
+                  }}>
+                  {TIME_LABELS[tr]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Filtre toggle — DIAG sekmesinde gizle */}
+          {tab !== 'DIAG' && <button
             className="btn btn-secondary"
             onClick={() => setShowFilters(p => !p)}
             style={{
-              marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
+              display: 'flex', alignItems: 'center', gap: 6,
               fontSize: 12, padding: '5px 12px',
               color: activeBadge > 0 ? 'var(--accent)' : undefined,
               borderColor: activeBadge > 0 ? 'rgba(56,189,248,0.4)' : undefined,
@@ -284,7 +325,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                 {activeBadge}
               </span>
             )}
-          </button>
+          </button>}
         </div>
 
         {/* ── Search & Filter Bar ── */}
@@ -344,27 +385,6 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
             {/* İkinci satır: özel filtreler */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
 
-              {/* Zaman aralığı */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 10px 3px 8px' }}>
-                <Clock size={11} color="var(--text-muted)" />
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Zaman</span>
-                {(Object.keys(TIME_LABELS) as TimeRange[]).map(tr => {
-                  const active = tab === 'WEBHOOK' ? whkF.timeRange === tr : sysF.timeRange === tr;
-                  return (
-                    <button key={tr}
-                      onClick={() => tab === 'WEBHOOK' ? setWhkF(f => ({ ...f, timeRange: tr })) : setSysF(f => ({ ...f, timeRange: tr }))}
-                      style={{
-                        padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: active ? 700 : 400,
-                        background: active ? 'var(--accent)' : 'transparent',
-                        color: active ? 'white' : 'var(--text-muted)',
-                        border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                      }}>
-                      {TIME_LABELS[tr]}
-                    </button>
-                  );
-                })}
-              </div>
-
               {/* Webhook: Cihaz seçimi */}
               {tab === 'WEBHOOK' && deviceOptions.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 4px 3px 10px' }}>
@@ -407,7 +427,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                     { v: '',      label: 'Tümü',    bg: 'var(--accent)' },
                     { v: 'GSM',   label: 'GSM',     bg: 'rgba(168,85,247,0.8)' },
                     { v: 'METRO', label: 'Karasal', bg: 'rgba(56,189,248,0.8)' },
-                    { v: 'HUB',   label: 'Hub',     bg: 'rgba(34,197,94,0.8)' },
+                    { v: 'HUB',   label: 'Hub',     bg: 'rgba(6,182,212,0.8)' },
                   ].map(({ v, label, bg }) => {
                     const active = whkF.vpnType === v;
                     return (
@@ -538,7 +558,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 32px' }}>
 
         {/* Empty */}
-        {!loading && (tab === 'WEBHOOK' ? filteredWhk : filteredSys).length === 0 && (
+        {!loading && tab !== 'DIAG' && (tab === 'WEBHOOK' ? filteredWhk : filteredSys).length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: '60%', color: 'var(--text-muted)' }}>
             <Activity size={36} style={{ opacity: 0.2 }} />
             <p style={{ fontSize: 13 }}>
@@ -562,8 +582,8 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               position: 'sticky', top: 0, zIndex: 5,
               background: 'var(--bg-base)',
               display: 'grid',
-              gridTemplateColumns: '4px 180px 70px 180px 1fr 72px 14px',
-              gap: '0 16px', padding: '6px 14px',
+              gridTemplateColumns: '4px minmax(120px,180px) 60px minmax(160px,1fr) minmax(80px,160px) 72px 14px',
+              gap: '0 12px', padding: '6px 14px',
               fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
               letterSpacing: '0.07em', color: 'var(--text-muted)',
               borderBottom: '1px solid var(--border)',
@@ -597,7 +617,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                 }}>
                   <div
                     onClick={() => setExpanded(open ? null : log.webhooklogid)}
-                    style={{ display: 'grid', gridTemplateColumns: '4px 180px 70px 180px 1fr 72px 14px', gap: '0 16px', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: open ? 'var(--accent-dim)' : 'transparent' }}
+                    style={{ display: 'grid', gridTemplateColumns: '4px minmax(120px,180px) 60px minmax(160px,1fr) minmax(80px,160px) 72px 14px', gap: '0 12px', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: open ? 'var(--accent-dim)' : 'transparent' }}
                     onMouseEnter={e => { if (!open) (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'; }}
                     onMouseLeave={e => { if (!open) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                   >
@@ -621,7 +641,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                     }} title={p.vpnName || ''}>
                       {isGsm ? 'GSM' : isHub ? 'Hub' : 'METRO'}
                     </span>
-                    <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', overflow: 'hidden', minWidth: 0 }}>
                       {failed ? (
                         <span style={{
                           fontSize: 11, fontWeight: 600, color: 'var(--red)',
@@ -685,6 +705,117 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* ── DIAG panel ── */}
+        {tab === 'DIAG' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 900 }}>
+            {!diag && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: 24, textAlign: 'center' }}>
+                <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} /><br/>Tanı verileri yükleniyor...
+              </div>
+            )}
+            {diag && <>
+              {/* Son başarılı hız testi */}
+              <div className="glass-card" style={{ padding: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>
+                  <Stethoscope size={15} /> Son Başarılı Hız Testi
+                </div>
+                {diag.lastSuccessfulSpeedTest ? (
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                    {[
+                      { label: 'Misyon',   val: diag.lastSuccessfulSpeedTest.cityname },
+                      { label: 'Hat',      val: diag.lastSuccessfulSpeedTest.vpntypename },
+                      { label: 'İndirme',  val: `${Number(diag.lastSuccessfulSpeedTest.downloadspeed ?? 0).toFixed(1)} Mbps` },
+                      { label: 'Zaman',    val: new Date(diag.lastSuccessfulSpeedTest.measuredat).toLocaleString('tr-TR') },
+                    ].map(({ label, val }) => (
+                      <div key={label}>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{label}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--red)', fontSize: 13 }}>
+                    <XCircle size={14} /> Hiç başarılı hız testi kaydı yok
+                  </div>
+                )}
+              </div>
+
+              {/* Günlük webhook sayıları */}
+              <div className="glass-card" style={{ padding: 20 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: 14 }}>Son 7 Gün Webhook Sayısı</div>
+                {diag.dailyWebhookCounts?.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {diag.dailyWebhookCounts.map((d: any) => (
+                      <div key={d.day} style={{ textAlign: 'center', padding: '8px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', fontFamily: 'monospace' }}>{d.count}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{new Date(d.day).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Son 7 günde webhook yok</div>
+                )}
+              </div>
+
+              {/* Son gelen raw webhooklar — format tanısı için */}
+              {diag.recentRawWebhooks?.length > 0 && (
+                <div className="glass-card" style={{ padding: 20 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--amber)', marginBottom: 14 }}>Son {diag.recentRawWebhooks.length} Webhook (Ham)</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {diag.recentRawWebhooks.map((w: any, i: number) => (
+                      <div key={i} style={{ padding: '10px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{new Date(w.ts).toLocaleString('tr-TR')}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 3, background: w.type === 'unknown' ? 'rgba(239,68,68,0.15)' : 'rgba(56,189,248,0.12)', color: w.type === 'unknown' ? 'var(--red)' : 'var(--accent)', border: `1px solid ${w.type === 'unknown' ? 'rgba(239,68,68,0.3)' : 'rgba(56,189,248,0.25)'}` }}>{w.type}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{w.method} {w.url}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{w.ip}</span>
+                        </div>
+                        <pre style={{ margin: 0, fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflow: 'auto', background: 'var(--bg-base)', padding: '6px 10px', borderRadius: 4 }}>{w.bodySnippet || '(boş body)'}</pre>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Son SpeedStats kayıtları */}
+              <div className="glass-card" style={{ padding: 20 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: 14 }}>Son 20 SpeedStats Kaydı</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        {['Misyon','Hat','İndirme','Yükleme','Durum','Zaman'].map(h => (
+                          <th key={h} style={{ padding: '4px 10px', textAlign: 'left', fontWeight: 700 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diag.recentSpeedStats?.map((s: any, i: number) => {
+                        const ok = s.downloadstatus === 'OK';
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'var(--bg-surface)' : 'transparent' }}>
+                            <td style={{ padding: '6px 10px', fontWeight: 600 }}>{s.cityname}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--accent)' }}>{s.vpntypename}</td>
+                            <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: ok ? 'var(--green)' : 'var(--red)' }}>{ok ? `${Number(s.downloadspeed).toFixed(1)} Mbps` : '—'}</td>
+                            <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: 'var(--blue)' }}>{ok ? `${Number(s.uploadspeed).toFixed(1)} Mbps` : '—'}</td>
+                            <td style={{ padding: '6px 10px' }}>
+                              {ok
+                                ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--green)' }}><CheckCircle size={11} /> OK</span>
+                                : <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--red)' }}><XCircle size={11} /> N/A</span>
+                              }
+                            </td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text-muted)', fontSize: 11 }}>{new Date(s.measuredat).toLocaleString('tr-TR')}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>}
           </div>
         )}
 

@@ -1,11 +1,15 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { FilterCombobox } from './FilterCombobox';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
 import { BarChart3, Filter, Download, Trophy, Globe, Activity, ListFilter, Calendar, X } from 'lucide-react';
 import { Mission, CityRow, Filters, FilterOptions, ReportType, fmt, getBestDownload } from '../types';
 import { useNocSummary } from '../hooks/useQueries';
 
-const COLORS = ['#38bdf8', '#a855f7', '#facc15', '#4ade80', '#f43f5e', '#fb923c', '#9ca3af'];
+const COLORS = ['#38bdf8', '#a855f7', '#f97316', '#f59e0b', '#ef4444', '#06b6d4', '#e879f9', '#84cc16'];
+
+// VPN tipi → renk (harita ve dashboard ile tutarlı)
+const VPN_COLOR: Record<string, string> = { GSM: '#a855f7', METRO: '#38bdf8', HUB: '#06b6d4' };
+const vpnColor = (t: string) => VPN_COLOR[String(t).toUpperCase()] ?? '#38bdf8';
 
 const today = () => new Date().toISOString().split('T')[0];
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
@@ -222,13 +226,13 @@ const StatCard = ({ title, value }: { title: string; value: string | number }) =
   </div>
 );
 
-export default function Reports({ missions, cityList, filters, filterOptions, summary, missionReports, countryReports, continentReports, vpntypeReports, reports, sparklines, loading, onFiltersChange, onApply }: Props) {
+export default function Reports({ missions, filters, filterOptions, summary, missionReports, countryReports, continentReports, vpntypeReports, reports, sparklines, loading, onFiltersChange, onApply }: Props) {
   const [sortCol, setSortCol] = useState('');
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc');
   const [showAllVpnMissions, setShowAllVpnMissions] = useState(false);
   const [nocPeriod, setNocPeriod] = useState<'daily'|'weekly'|'monthly'>('monthly');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const reportContentRef = useRef<HTMLDivElement>(null);
+
   const { data: nocData, isFetching: nocLoading } = useNocSummary(nocPeriod);
 
   const toggleSort = (col: string) => {
@@ -270,15 +274,17 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
 
     const bestMission = [...cMissions].sort((a, b) => getBestDownload(b) - getBestDownload(a))[0];
 
-    let gsmSum = 0, gsmCount = 0, metroSum = 0, metroCount = 0;
+    let gsmSum = 0, gsmCount = 0, metroSum = 0, metroCount = 0, hubSum = 0, hubCount = 0;
     cMissions.forEach(m => {
-      if (m.gsm_download) { gsmSum += m.gsm_download; gsmCount++; }
+      if (m.gsm_download)   { gsmSum   += m.gsm_download;   gsmCount++;   }
       if (m.metro_download) { metroSum += m.metro_download; metroCount++; }
+      if (m.hub_download)   { hubSum   += m.hub_download;   hubCount++;   }
     });
 
     const vpnCompare = [
-      { name: '📶 GSM',      dl: gsmCount   ? Number((gsmSum/gsmCount).toFixed(1))     : 0, unit: 'Mbps' },
-      { name: '🌐 Karasal', dl: metroCount ? Number((metroSum/metroCount).toFixed(1)) : 0, unit: 'Mbps' },
+      { name: 'GSM',     dl: gsmCount   ? Number((gsmSum/gsmCount).toFixed(1))     : 0, unit: 'Mbps' },
+      { name: 'Karasal', dl: metroCount ? Number((metroSum/metroCount).toFixed(1)) : 0, unit: 'Mbps' },
+      { name: 'Hub',     dl: hubCount   ? Number((hubSum/hubCount).toFixed(1))     : 0, unit: 'Mbps' },
     ];
 
     const missionPie = cMissions.map(m => ({
@@ -323,7 +329,8 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
     if (filters.missionId) base = base.filter(m => String(m.id) === filters.missionId);
     const gsmList   = base.filter(m => m.gsm_download).map(m => ({ id: m.id, name: m.name, continent: m.continent, country: m.country, İndirme: m.gsm_download, unit: 'Mbps' })).sort((a,b) => (b.İndirme||0) - (a.İndirme||0));
     const metroList = base.filter(m => m.metro_download).map(m => ({ id: m.id, name: m.name, continent: m.continent, country: m.country, İndirme: m.metro_download, unit: 'Mbps' })).sort((a,b) => (b.İndirme||0) - (a.İndirme||0));
-    return { gsmList, metroList };
+    const hubList   = base.filter(m => m.hub_download).map(m => ({ id: m.id, name: m.name, continent: m.continent, country: m.country, İndirme: m.hub_download, unit: 'Mbps' })).sort((a,b) => (b.İndirme||0) - (a.İndirme||0));
+    return { gsmList, metroList, hubList };
   }, [missions, filters.continent, filters.country, filters.missionId]);
 
   // Orijinal Sıralama
@@ -588,13 +595,13 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
               <button disabled={nocLoading} onClick={() => setNocPeriod('monthly')} className={`btn ${nocPeriod==='monthly'?'btn-primary':'btn-secondary'}`}>Son 30 Gün</button>
             </div>
 
-            {/* Total Kartlar */}
-            {summary && (
+            {/* Total Kartlar — period'a göre nocData'dan oku */}
+            {(nocData || summary) && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '20px' }}>
-                <StatCard title="Toplam Ağ Misyonu" value={fmt(summary.total_missions)} />
-                <StatCard title="Veri Alınan Misyon" value={fmt(summary.missions_with_data)} />
-                <StatCard title="Küresel Trafik (İndirme)" value={`${fmt(summary.global_avg_download)} Mbps`} />
-                <StatCard title="Küresel Trafik (Yükleme)" value={`${fmt(summary.global_avg_upload)} Mbps`} />
+                <StatCard title="Toplam Ağ Misyonu" value={fmt(nocData?.total_missions ?? summary?.total_missions, 0)} />
+                <StatCard title="Veri Alınan Misyon" value={fmt(nocData?.missions_with_data ?? summary?.missions_with_data, 0)} />
+                <StatCard title="Küresel Trafik (İndirme)" value={`${fmt(nocData?.global_avg_download ?? summary?.global_avg_download)} Mbps`} />
+                <StatCard title="Küresel Trafik (Yükleme)" value={`${fmt(nocData?.global_avg_upload ?? summary?.global_avg_upload)} Mbps`} />
               </div>
             )}
 
@@ -673,10 +680,33 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                           <Tooltip content={<CustomTooltip />} />
                           <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: 8 }} />
                           <Bar dataKey="İndirme" fill="#38bdf8" radius={[0, 4, 4, 0]} barSize={10} />
-                          <Bar dataKey="Yükleme" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={10} />
+                          <Bar dataKey="Yükleme" fill="#7c3aed" radius={[0, 4, 4, 0]} barSize={10} />
                        </BarChart>
                      </ResponsiveContainer>
                    </div>
+
+                   {/* Hub Top 10 */}
+                   {nocData.top_hub_dl?.length > 0 && (
+                     <div className="glass-card" style={{ padding: '20px', borderTop: '4px solid #06b6d4', gridColumn: 'span 2' }}>
+                       <div className="section-title" style={{ marginBottom: '12px' }}>🔗 Hub Top 10 İstasyon</div>
+                       <ResponsiveContainer width="100%" height={320}>
+                         <BarChart layout="vertical"
+                           data={nocData.top_hub_dl?.map((c: any) => {
+                             const ul = nocData.top_hub_ul?.find((u: any) => u.name === c.name);
+                             return { name: c.name, İndirme: Number(c.dl), Yükleme: Number(ul?.ul ?? 0) };
+                           })}
+                           margin={{top:10, right:30, left:20, bottom:0}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
+                            <XAxis type="number" hide />
+                            <YAxis dataKey="name" type="category" width={110} tick={{fill:'var(--text-muted)', fontSize: 11}} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: 8 }} />
+                            <Bar dataKey="İndirme" fill="#06b6d4" radius={[0, 4, 4, 0]} barSize={10} />
+                            <Bar dataKey="Yükleme" fill="#0891b2" radius={[0, 4, 4, 0]} barSize={10} />
+                         </BarChart>
+                       </ResponsiveContainer>
+                     </div>
+                   )}
                 </div>
              )
             )}
@@ -760,8 +790,8 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                         <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false}/>
                         <Tooltip content={<CustomTooltip />}/>
                         <Bar dataKey="dl" name="İndirme (Ort.)" radius={[0,4,4,0]} barSize={20}>
-                           {countryAnalytics.vpnCompare.map((_entry, index) => (
-                             <Cell key={`cell-${index}`} fill={index === 0 ? '#a855f7' : '#38bdf8'} />
+                           {countryAnalytics.vpnCompare.map((entry, index) => (
+                             <Cell key={`cell-${index}`} fill={vpnColor((entry as any).vpn_type ?? (index === 0 ? 'GSM' : index === 1 ? 'METRO' : 'HUB'))} />
                            ))}
                         </Bar>
                       </BarChart>
@@ -774,7 +804,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                     <ResponsiveContainer width="100%" height={160}>
                       <PieChart>
                         <Pie data={countryAnalytics.missionPie} cx="40%" cy="55%" innerRadius={40} outerRadius={65} paddingAngle={4} dataKey="value" stroke="none">
-                          {countryAnalytics.missionPie.map((entry, index) => (
+                          {countryAnalytics.missionPie.map((_entry, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
@@ -855,7 +885,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                      <ResponsiveContainer width="100%" height={220}>
                        <PieChart>
                          <Pie data={continentAnalytics.countryPie} cx="35%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
-                           {continentAnalytics.countryPie.map((entry, index) => (
+                           {continentAnalytics.countryPie.map((_entry, index) => (
                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                            ))}
                          </Pie>
@@ -939,16 +969,24 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
               <div className="glass-card" style={{ padding: '20px', marginBottom: '24px' }}>
                 <div className="section-title">Hat Tipi Verimliliği & Toplam Testler</div>
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={vpntypeReports.map(r => ({ name: String(r.vpn_type) === 'GSM' ? '📶 GSM' : '🌐 METRO', İndirme: Number(Number(r.avg_download).toFixed(1)), Yükleme: Number(Number(r.avg_upload).toFixed(1)), Test: Number(r.total_tests) }))}>
+                  <BarChart data={vpntypeReports.map(r => {
+                    const t = String(r.vpn_type);
+                    return { name: t === 'GSM' ? 'GSM' : t === 'METRO' ? 'Karasal' : t === 'HUB' ? 'Hub' : t, İndirme: Number(Number(r.avg_download).toFixed(1)), Yükleme: Number(Number(r.avg_upload).toFixed(1)), Test: Number(r.total_tests), _type: t };
+                  })}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
                     <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false}/>
                     <YAxis yAxisId="left" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false}/>
                     <YAxis yAxisId="right" orientation="right" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false}/>
                     <Tooltip content={<CustomTooltip />}/>
                     <Legend wrapperStyle={{ fontSize: 11 }}/>
-                    <Bar yAxisId="left" dataKey="İndirme" fill="var(--purple)" radius={[4,4,0,0]} barSize={30}/>
+                    <Bar yAxisId="left" dataKey="İndirme" radius={[4,4,0,0]} barSize={30}>
+                      {vpntypeReports.map((r, i) => {
+                        const t = String(r.vpn_type);
+                        return <Cell key={i} fill={vpnColor(t)} />;
+                      })}
+                    </Bar>
                     <Bar yAxisId="left" dataKey="Yükleme" fill="var(--accent)" radius={[4,4,0,0]} barSize={30}/>
-                    <Line yAxisId="right" type="monotone" dataKey="Test" stroke="#22c55e" strokeWidth={3}/>
+                    <Line yAxisId="right" type="monotone" dataKey="Test" stroke="#f59e0b" strokeWidth={3}/>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1023,9 +1061,40 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                   {!showAllVpnMissions && vpnAnalytics.metroList.length > 10 && <div style={{ textAlign: 'center', padding: '10px', fontSize:'0.75rem', color:'var(--text-muted)' }}>... ve {vpnAnalytics.metroList.length - 10} merkez daha</div>}
                 </div>
               </div>
+
+              {/* Hub Listesi */}
+              {vpnAnalytics.hubList.length > 0 && (
+                <div className="glass-card" style={{ padding: '16px', borderTop: '3px solid #06b6d4' }} data-html2canvas-ignore="true">
+                  <div style={{ fontWeight: 800, color: '#06b6d4', marginBottom: '12px', fontSize: '1rem' }}>🔗 Hub Performans Liderleri</div>
+                  <div style={{ overflowY: 'auto', maxHeight: showAllVpnMissions ? '600px' : 'none' }}>
+                    <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                      <thead><tr>
+                        <th>Sıra</th><th>Misyon</th><th>Ülke</th><th className="right">İndirme</th>
+                        <th style={{textAlign:'center', width: 70}}>1 Gün</th>
+                        <th style={{textAlign:'center', width: 70}}>7 Gün</th>
+                        <th style={{textAlign:'center', width: 70}}>30 Gün</th>
+                      </tr></thead>
+                      <tbody>
+                        {(showAllVpnMissions ? vpnAnalytics.hubList : vpnAnalytics.hubList.slice(0, 10)).map((m, i) => (
+                          <tr key={i}>
+                            <td style={{ color: i < 3 ? '#facc15' : 'var(--text-muted)', fontWeight: i < 3 ? 800 : 500 }}>#{i+1}</td>
+                            <td style={{ fontWeight: 600 }}>{m.name}</td>
+                            <td style={{ color: 'var(--text-muted)' }}>{m.country}</td>
+                            <td className="right" style={{ color: 'var(--green)', fontWeight: 600 }}>{fmt(m.İndirme)} <span style={{fontSize:'0.65rem'}}>Mbps</span></td>
+                            <td align="center"><SparkCell data={sparklines?.[m.id]?.['HUB']?.daily} color="#06b6d4" /></td>
+                            <td align="center"><SparkCell data={sparklines?.[m.id]?.['HUB']?.weekly} color="#06b6d4" /></td>
+                            <td align="center"><SparkCell data={sparklines?.[m.id]?.['HUB']?.monthly} color="#06b6d4" /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!showAllVpnMissions && vpnAnalytics.hubList.length > 10 && <div style={{ textAlign: 'center', padding: '10px', fontSize:'0.75rem', color:'var(--text-muted)' }}>... ve {vpnAnalytics.hubList.length - 10} merkez daha</div>}
+                  </div>
+                </div>
+              )}
             </div>
-            
-            {!vpntypeReports.length && !vpnAnalytics.gsmList.length && !vpnAnalytics.metroList.length && <div style={{padding: '40px', textAlign:'center', color:'var(--text-muted)'}}>Gösterilecek sonuç bulunamadı.</div>}
+
+            {!vpntypeReports.length && !vpnAnalytics.gsmList.length && !vpnAnalytics.metroList.length && !vpnAnalytics.hubList.length && <div style={{padding: '40px', textAlign:'center', color:'var(--text-muted)'}}>Gösterilecek sonuç bulunamadı.</div>}
           </div>
         )}
 
@@ -1048,9 +1117,11 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                       <td style={{ fontWeight: 600 }}>{String(r.cityname ?? '–')}</td>
                       <td>{String(r.country ?? '–')}</td>
                       <td>
-                        <span className={`badge ${String(r.vpntypename) === 'GSM' ? 'badge-purple' : 'badge-accent'}`}>
-                          {String(r.vpntypename ?? '–')}
-                        </span>
+                        {(() => {
+                          const t = String(r.vpntypename ?? '');
+                          const cls = t === 'GSM' ? 'badge-purple' : t === 'HUB' ? 'badge-green' : 'badge-accent';
+                          return <span className={`badge ${cls}`}>{t || '–'}</span>;
+                        })()}
                       </td>
                       <td className="right" style={{ color: 'var(--green)', fontWeight: 600 }}>{fmt(r.downloadspeed)}</td>
                       <td className="right" style={{ color: 'var(--blue)', fontWeight: 600 }}>{fmt(r.uploadspeed)}</td>

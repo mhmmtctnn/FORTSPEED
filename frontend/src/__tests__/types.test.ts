@@ -82,14 +82,14 @@ describe('getBestUpload', () => {
 // ─── getMarkerColor ─────────────────────────────────────────────────────────
 
 describe('getMarkerColor', () => {
-  it('returns green for ≥60 Mbps', () => {
-    expect(getMarkerColor(makeMission({ gsm_download: 70 }))).toBe('#22c55e');
-    expect(getMarkerColor(makeMission({ metro_download: 60 }))).toBe('#22c55e');
+  it('returns light blue for ≥60 Mbps', () => {
+    expect(getMarkerColor(makeMission({ gsm_download: 70 }))).toBe('#38bdf8');
+    expect(getMarkerColor(makeMission({ metro_download: 60 }))).toBe('#38bdf8');
   });
 
-  it('returns amber for ≥30 and <60 Mbps', () => {
-    expect(getMarkerColor(makeMission({ gsm_download: 45 }))).toBe('#f59e0b');
-    expect(getMarkerColor(makeMission({ metro_download: 30 }))).toBe('#f59e0b');
+  it('returns orange for ≥30 and <60 Mbps', () => {
+    expect(getMarkerColor(makeMission({ gsm_download: 45 }))).toBe('#f97316');
+    expect(getMarkerColor(makeMission({ metro_download: 30 }))).toBe('#f97316');
   });
 
   it('returns red for <30 Mbps', () => {
