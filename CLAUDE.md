@@ -65,6 +65,31 @@ Controlled by `ITAI_MODE` env var:
 - `frontend/src/types.ts` — shared types: `Mission`, `Filters`, `View`, `ReportType`, `VpnTab`
 - Views: Dashboard, MapView (MapLibre-GL), Reports, MissionManager, AdminSettings, LogViewer
 
+### i18n (Internationalization)
+Supports TR / EN / FR / AR (RTL). Single import point: `frontend/src/i18n/index.ts`
+
+**Adding i18n to a new page/component:**
+```tsx
+import { useT } from '../i18n';          // adjust depth: '../../i18n' if in a subfolder
+const t = useT();                         // inside the component function
+<h1>{t('your_key')}</h1>
+```
+
+**If a local variable named `t` already exists** (e.g. inside `.map(t => ...)`), alias it:
+```tsx
+const translate = useT();
+```
+
+**Adding a new translation key:**
+1. Add the key to all 4 locale objects in `frontend/src/i18n/translations.ts`
+2. Use `t('your_key')` in the component — done.
+
+**Adding a new locale:**
+1. Add to the `Locale` union in `translations.ts`
+2. Add a full translation object for that locale
+3. Add entry to `LOCALE_FLAGS` and `LOCALE_LABELS`
+4. Done — LanguageContext picks it up automatically.
+
 ### Backend API
 Key routes in `backend/src/app.ts`:
 - `GET /api/missions` — all missions with latest speed data

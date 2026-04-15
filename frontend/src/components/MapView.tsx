@@ -1,10 +1,11 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
+import { useT } from '../i18n';
 import { FilterCombobox } from './FilterCombobox';
 import Map, { Marker, NavigationControl, Popup, MapRef, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck, GitBranch, Satellite, Zap } from 'lucide-react';
-import { Mission, StatPoint, FilterOptions, VpnTab, SdwanRow, getMarkerColor, getQualityClass, getQualityLabel } from '../types';
+import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck, GitBranch, Zap } from 'lucide-react';
+import { Mission, StatPoint, FilterOptions, VpnTab, SdwanRow, getMarkerColor, getQualityClass, getQualityLabel, TerrestrialType } from '../types';
 
 interface Props {
   missions: Mission[];
@@ -90,8 +91,10 @@ export default function MapView({
   sdwanData,
   onMarkerClick, onClearSelection, onSetPopup, onSetVpnTab, onMapFilterChange,
 }: Props) {
+  const t = useT();
   const [vpnMapFilter, setVpnMapFilter] = useState<'GSM' | 'METRO' | 'HUB' | null>(null);
   const [satelliteFilter, setSatelliteFilter] = useState<'starlink' | 'turksat' | null>(null);
+  const [terrestrialFilter, setTerrestrialFilter] = useState<TerrestrialType | null>(null);
   const [speedFilter, setSpeedFilter] = useState<'excellent' | 'good' | 'poor' | 'nodata' | null>(null);
   const [openFilterPanel, setOpenFilterPanel] = useState<'connection' | 'speed' | null>(null);
 
@@ -99,6 +102,20 @@ export default function MapView({
     { value: 'starlink' as const, label: 'Starlink', hex: '#06b6d4' },
     { value: 'turksat'  as const, label: 'Türksat',  hex: '#dc2626' },
   ];
+
+  const TERR_OPTIONS = [
+    { value: 'tti' as TerrestrialType, label: 'TTI', hex: '#f59e0b' },
+  ];
+
+  const getTerrestrialType = (m: Mission) => m.terrestrial_type ?? null;
+
+  const getTTIIcon = (sz = 10) => (
+    <svg width={sz} height={sz} viewBox="0 0 20 20" fill="none">
+      <rect x="2" y="9" width="16" height="2" fill="#fff" rx="1"/>
+      <rect x="9" y="2" width="2" height="7" fill="#fff" rx="1"/>
+      <circle cx="10" cy="15" r="3" stroke="#fff" strokeWidth="1.8" fill="none"/>
+    </svg>
+  );
 
   const getSatType = (m: Mission) => m.satellite_type ?? null;
 
@@ -158,11 +175,14 @@ export default function MapView({
     if (satelliteFilter) {
       result = result.filter(m => getSatType(m) === satelliteFilter);
     }
+    if (terrestrialFilter) {
+      result = result.filter(m => getTerrestrialType(m) === terrestrialFilter);
+    }
     if (speedFilter) {
       result = result.filter(m => getSpeedTier(m) === speedFilter);
     }
     return result;
-  }, [filteredMissions, vpnMapFilter, satelliteFilter, speedFilter, sdwanByCity]);
+  }, [filteredMissions, vpnMapFilter, satelliteFilter, terrestrialFilter, speedFilter, sdwanByCity]);
 
   const activeStats = selectedVpnTab === 'GSM' ? statsGsm : selectedVpnTab === 'HUB' ? statsHub : statsMetro;
   const mapRef = useRef<MapRef>(null);
@@ -597,7 +617,7 @@ export default function MapView({
         <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)', overflow: 'visible', position: 'relative', zIndex: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
             <MapPin size={18} color="var(--accent)"/>
-            <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Misyon Ağ Durumu</h2>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>{t('map_mission_status')}</h2>
             <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{filteredMissions.length} misyon</span>
             {selectedMission && (
               <button
@@ -625,7 +645,7 @@ export default function MapView({
               value={mapFilter.continent}
               onChange={handleContinentChange}
               options={filterOptions.continents.map(c => ({ value: c, label: c }))}
-              placeholder="Tüm Kıtalar"
+              placeholder={t('all_continents')}
             />
           </div>
           {/* Ülke filtresi — kıta seçilmişse sadece o kıtanın ülkeleri listelenir */}
@@ -649,7 +669,7 @@ export default function MapView({
                 }
               }}
               options={availableCountries.map(c => ({ value: c, label: c }))}
-              placeholder="Tüm Ülkeler"
+              placeholder={t('all_countries')}
             />
           </div>
 
@@ -671,7 +691,7 @@ export default function MapView({
               }
             }}
             options={availableMissions.map(m => ({ value: String(m.id), label: m.name }))}
-            placeholder="Tüm Misyonlar"
+            placeholder={t('all_missions')}
           />
 
           <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -681,7 +701,7 @@ export default function MapView({
                 onClick={() => { onMapFilterChange({ continent: '', country: '', mission: '' }); onSetPopup(null); setVpnMapFilter(null); setSatelliteFilter(null); setSpeedFilter(null); }}
                 style={{ fontSize: '0.7rem', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
               >
-                Filtreyi Temizle
+                {t('clear_filter')}
               </button>
             )}
           </div>
@@ -691,7 +711,7 @@ export default function MapView({
           {!selectedMission ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>
               <Globe size={56} style={{ marginBottom: '16px', opacity: 0.2 }}/>
-              <p style={{ fontSize: '0.85rem' }}>Haritadan bir misyon seçin</p>
+              <p style={{ fontSize: '0.85rem' }}>{t('map_select_mission')}</p>
             </div>
           ) : (
             <div className="fade-in">
@@ -710,16 +730,16 @@ export default function MapView({
               <div className="glass-card" style={{ padding: '14px', marginBottom: '10px', borderLeft: '3px solid var(--purple)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                   <Signal size={15} color="var(--purple)"/>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--purple)' }}>GSM (Mobil)</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--purple)' }}>{t('gsm_mobile')}</span>
                   {selectedMission.gsm_test_time
                     ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.gsm_test_time).toLocaleString('tr-TR')}</span>
-                    : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>Veri yok</span>}
+                    : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>{t('no_data')}</span>}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                   {[
-                    { label: 'İndirme', value: selectedMission.gsm_download, unit: 'Mbps', color: 'var(--green)' },
-                    { label: 'Yükleme', value: selectedMission.gsm_upload, unit: 'Mbps', color: 'var(--blue)' },
-                    { label: 'Gecikme', value: selectedMission.gsm_latency, unit: 'ms', color: 'var(--amber)', fixed: 0 },
+                    { label: t('download'), value: selectedMission.gsm_download, unit: 'Mbps', color: 'var(--green)' },
+                    { label: t('upload'),   value: selectedMission.gsm_upload,   unit: 'Mbps', color: 'var(--blue)' },
+                    { label: t('latency'),  value: selectedMission.gsm_latency,  unit: 'ms',   color: 'var(--amber)', fixed: 0 },
                   ].map(s => (
                     <div key={s.label}>
                       <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>{s.label}</div>
@@ -748,16 +768,16 @@ export default function MapView({
               <div className="glass-card" style={{ padding: '14px', marginBottom: '14px', borderLeft: '3px solid var(--accent)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                   <Wifi size={15} color="var(--accent)"/>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>Karasal (METRO)</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>{t('metro_link')}</span>
                   {selectedMission.metro_test_time
                     ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.metro_test_time).toLocaleString('tr-TR')}</span>
-                    : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>Veri yok</span>}
+                    : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>{t('no_data')}</span>}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                   {[
-                    { label: 'İndirme', value: selectedMission.metro_download, unit: 'Mbps', color: 'var(--green)' },
-                    { label: 'Yükleme', value: selectedMission.metro_upload, unit: 'Mbps', color: 'var(--blue)' },
-                    { label: 'Gecikme', value: selectedMission.metro_latency, unit: 'ms', color: 'var(--amber)', fixed: 0 },
+                    { label: t('download'), value: selectedMission.metro_download, unit: 'Mbps', color: 'var(--green)' },
+                    { label: t('upload'),   value: selectedMission.metro_upload,   unit: 'Mbps', color: 'var(--blue)' },
+                    { label: t('latency'),  value: selectedMission.metro_latency,  unit: 'ms',   color: 'var(--amber)', fixed: 0 },
                   ].map(s => (
                     <div key={s.label}>
                       <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>{s.label}</div>
@@ -768,8 +788,13 @@ export default function MapView({
                     </div>
                   ))}
                 </div>
-                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
                   {selectedMission.metro_device && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}><HardDrive size={10}/>{selectedMission.metro_device}</span>}
+                  {getTerrestrialType(selectedMission) === 'tti' && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 4, padding: '2px 6px' }}>
+                      {getTTIIcon(11)} TTI
+                    </span>
+                  )}
                   <span className={`quality-pill ${getQualityClass(selectedMission.metro_download)}`} style={{ marginLeft: 'auto' }}>{getQualityLabel(selectedMission.metro_download)}</span>
                 </div>
               </div>
@@ -779,16 +804,16 @@ export default function MapView({
                 <div className="glass-card" style={{ padding: '14px', marginBottom: '14px', borderLeft: '3px solid var(--green)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                     <ShieldCheck size={15} color="var(--green)"/>
-                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--green)' }}>Hub Bağlantısı</span>
+                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--green)' }}>{t('hub_link')}</span>
                     {selectedMission.hub_test_time
                       ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.hub_test_time).toLocaleString('tr-TR')}</span>
-                      : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>Veri yok</span>}
+                      : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>{t('no_data')}</span>}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                     {[
-                      { label: 'İndirme', value: selectedMission.hub_download, unit: 'Mbps', color: 'var(--green)' },
-                      { label: 'Yükleme', value: selectedMission.hub_upload, unit: 'Mbps', color: 'var(--blue)' },
-                      { label: 'Gecikme', value: selectedMission.hub_latency, unit: 'ms', color: 'var(--amber)', fixed: 0 },
+                      { label: t('download'), value: selectedMission.hub_download, unit: 'Mbps', color: 'var(--green)' },
+                      { label: t('upload'),   value: selectedMission.hub_upload,   unit: 'Mbps', color: 'var(--blue)' },
+                      { label: t('latency'),  value: selectedMission.hub_latency,  unit: 'ms',   color: 'var(--amber)', fixed: 0 },
                     ].map(s => (
                       <div key={s.label}>
                         <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>{s.label}</div>
@@ -830,7 +855,7 @@ export default function MapView({
                               <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace', minWidth: 14 }}>{m.seq_id}</span>
                               <span style={{ fontSize: '0.75rem', fontWeight: isActive ? 700 : 400, color: isActive ? 'var(--amber)' : 'var(--text-secondary)', flex: 1 }}>{m.interface}</span>
                               {m.cost != null && <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>cost {m.cost}</span>}
-                              {isActive && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase' }}>aktif</span>}
+                              {isActive && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase' }}>{t('active')}</span>}
                             </div>
                           );
                         })}
@@ -838,7 +863,7 @@ export default function MapView({
                     )}
                     {sdwan.updated_at && (
                       <div style={{ marginTop: 6, fontSize: '0.6rem', color: 'var(--text-muted)' }}>
-                        Son güncelleme: {new Date(sdwan.updated_at).toLocaleString('tr-TR')}
+                        {t('last_update')}: {new Date(sdwan.updated_at).toLocaleString('tr-TR')}
                       </div>
                     )}
                   </div>
@@ -849,16 +874,16 @@ export default function MapView({
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 700 }}>
-                    <TrendingUp size={14} color="var(--text-secondary)"/> Performans Geçmişi
+                    <TrendingUp size={14} color="var(--text-secondary)"/> {t('perf_history')}
                   </div>
                   <div style={{ display: 'flex', gap: '4px' }}>
                     <button className={`tab-btn ${selectedVpnTab === 'GSM' ? 'active' : ''}`} style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => onSetVpnTab('GSM')}>GSM</button>
-                    <button className={`tab-btn ${selectedVpnTab === 'METRO' ? 'active' : ''}`} style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => onSetVpnTab('METRO')}>Karasal</button>
+                    <button className={`tab-btn ${selectedVpnTab === 'METRO' ? 'active' : ''}`} style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => onSetVpnTab('METRO')}>{t('karasal')}</button>
                     <button className={`tab-btn ${selectedVpnTab === 'HUB' ? 'active' : ''}`} style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => onSetVpnTab('HUB')}>Hub</button>
                   </div>
                 </div>
                 {activeStats.length === 0 ? (
-                  <div style={{ height: '160px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', border: '1px solid var(--border)' }}>Son 7 günde kayıt yok</div>
+                  <div style={{ height: '160px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', border: '1px solid var(--border)' }}>{t('no_stats_7d')}</div>
                 ) : (
                   <div style={{ height: '180px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '10px', border: '1px solid var(--border)' }}>
                     <ResponsiveContainer width="100%" height="100%">
@@ -868,8 +893,8 @@ export default function MapView({
                         <YAxis stroke="var(--text-muted)" fontSize={9}/>
                         <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 10 }}/>
                         <Legend wrapperStyle={{ fontSize: 10 }}/>
-                        <Line type="monotone" dataKey="download" stroke="var(--green)" strokeWidth={2} dot={false} name="↓ İndirme (Mbps)"/>
-                        <Line type="monotone" dataKey="upload" stroke="var(--blue)" strokeWidth={2} dot={false} name="↑ Yükleme (Mbps)"/>
+                        <Line type="monotone" dataKey="download" stroke="var(--green)" strokeWidth={2} dot={false} name={`↓ ${t('download')} (Mbps)`}/>
+                        <Line type="monotone" dataKey="upload" stroke="var(--blue)" strokeWidth={2} dot={false} name={`↑ ${t('upload')} (Mbps)`}/>
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -906,7 +931,7 @@ export default function MapView({
                 paint={{
                   'line-color': tier.color,
                   'line-width': 1.2,
-                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter)
+                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter && !terrestrialFilter)
                     ? ['case', ['==', ['get', 'id'], selectedMission.id], 0.7, 0.05]
                     : (tier.id === 'poor' ? 0.60 : tier.id === 'good' ? 0.40 : 0.25),
                   'line-blur': 5,
@@ -919,7 +944,7 @@ export default function MapView({
                 paint={{
                   'line-color': tier.color,
                   'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.6, 4, 1.0, 7, 1.5],
-                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter)
+                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter && !terrestrialFilter)
                     ? ['case', ['==', ['get', 'id'], selectedMission.id], 0.9, 0.1]
                     : (tier.id === 'poor' ? 0.75 : tier.id === 'good' ? 0.55 : 0.35),
                   'line-dasharray': [2, 5],
@@ -943,7 +968,7 @@ export default function MapView({
                 paint={{
                   'line-color': tier.color,
                   'line-width': ['interpolate', ['linear'], ['zoom'], 1, 2, 4, 3.5, 7, 5],
-                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter)
+                  'line-opacity': (selectedMission && !vpnMapFilter && !satelliteFilter && !terrestrialFilter)
                     ? ['case', ['==', ['get', 'id'], selectedMission.id], 1.0, 0]
                     : (tier.id === 'poor' ? 1.0 : tier.id === 'good' ? 0.85 : 0.7),
                   'line-blur': 0.4,
@@ -1028,11 +1053,15 @@ export default function MapView({
             const selected = selectedMission?.id === m.id;
             const satType = getSatType(m);
             const satOpt = satType ? SAT_OPTIONS.find(o => o.value === satType) : null;
+            const terrType = getTerrestrialType(m);
+            const terrOpt = terrType ? TERR_OPTIONS.find(o => o.value === terrType) : null;
 
-            // When satellite filter active, use satellite color; otherwise speed-based color
-            const color = satelliteFilter && satOpt ? satOpt.hex : speedColor;
+            // When satellite/terrestrial filter active, use respective color; otherwise speed-based color
+            const color = satelliteFilter && satOpt ? satOpt.hex
+              : terrestrialFilter && terrOpt ? terrOpt.hex
+              : speedColor;
 
-            const anyFilter = !!(vpnMapFilter || satelliteFilter);
+            const anyFilter = !!(vpnMapFilter || satelliteFilter || terrestrialFilter);
             const size = selected ? 22 : anyFilter ? 16 : 12;
 
             return (
@@ -1041,8 +1070,8 @@ export default function MapView({
                 onClick={e => { e.originalEvent.stopPropagation(); onMarkerClick(m); }}
                 style={{ zIndex: selected ? 10 : 1 }}
               >
-                {/* Satellite marker: show prominent badge when not in filter mode */}
-                {satOpt && !satelliteFilter ? (
+                {/* Satellite/Terrestrial badge marker when not in filter mode */}
+                {(satOpt && !satelliteFilter && !terrestrialFilter) ? (
                   <div style={{
                     position: 'relative', cursor: 'pointer',
                     width: `${size + 8}px`, height: `${size + 8}px`,
@@ -1050,15 +1079,12 @@ export default function MapView({
                     transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
                     opacity: selected ? 1 : (selectedMission && !anyFilter ? 0.3 : 1),
                   }}>
-                    {/* Ana hız rengi daire */}
                     <div style={{
                       width: `${size}px`, height: `${size}px`,
                       background: speedColor, borderRadius: '50%',
                       border: selected ? '3px solid white' : '2px solid rgba(255,255,255,0.8)',
                       boxShadow: selected ? `0 0 16px ${speedColor}, 0 0 32px ${speedColor}` : `0 0 6px ${speedColor}66`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }} />
-                    {/* Belirgin uydu rozeti — özel ikon */}
                     <div style={{
                       position: 'absolute', top: -8, right: -8,
                       display: 'flex', alignItems: 'center', gap: 2,
@@ -1070,6 +1096,31 @@ export default function MapView({
                       <span style={{ fontSize: '0.52rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '0.02em' }}>
                         {satOpt.value === 'starlink' ? 'SL' : 'TK'}
                       </span>
+                    </div>
+                  </div>
+                ) : (terrOpt && !satelliteFilter && !terrestrialFilter) ? (
+                  <div style={{
+                    position: 'relative', cursor: 'pointer',
+                    width: `${size + 8}px`, height: `${size + 8}px`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+                    opacity: selected ? 1 : (selectedMission && !anyFilter ? 0.3 : 1),
+                  }}>
+                    <div style={{
+                      width: `${size}px`, height: `${size}px`,
+                      background: speedColor, borderRadius: '50%',
+                      border: selected ? '3px solid white' : '2px solid rgba(255,255,255,0.8)',
+                      boxShadow: selected ? `0 0 16px ${speedColor}, 0 0 32px ${speedColor}` : `0 0 6px ${speedColor}66`,
+                    }} />
+                    <div style={{
+                      position: 'absolute', top: -8, right: -8,
+                      display: 'flex', alignItems: 'center', gap: 2,
+                      background: terrOpt.hex, border: '2px solid #fff',
+                      borderRadius: 12, padding: '3px 6px',
+                      boxShadow: `0 2px 10px ${terrOpt.hex}bb, 0 0 0 1px ${terrOpt.hex}44`,
+                    }}>
+                      {getTTIIcon(11)}
+                      <span style={{ fontSize: '0.52rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '0.02em' }}>TTI</span>
                     </div>
                   </div>
                 ) : (
@@ -1085,10 +1136,11 @@ export default function MapView({
                         : `0 0 6px ${color}66`,
                     transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
                     opacity: selected ? 1 : (selectedMission && !anyFilter ? 0.3 : 1),
-                    display: satelliteFilter ? 'flex' : 'block',
+                    display: (satelliteFilter || terrestrialFilter) ? 'flex' : 'block',
                     alignItems: 'center', justifyContent: 'center',
                   }} className={!selected && !anyFilter && (speedColor === '#ef4444' || speedColor === '#f97316') && !selectedMission ? 'marker-pulse' : ''}>
                     {satelliteFilter && getSatIcon(satelliteFilter, Math.round(size * 0.55))}
+                    {terrestrialFilter && getTTIIcon(Math.round(size * 0.55))}
                   </div>
                 )}
               </Marker>
@@ -1112,7 +1164,14 @@ export default function MapView({
                 <div style={{ fontSize: '0.75rem', marginBottom: '6px' }}>
                   ↓ <b>{popupInfo.gsm_download != null ? Number(popupInfo.gsm_download).toFixed(1) : '–'}</b> / ↑ <b>{popupInfo.gsm_upload != null ? Number(popupInfo.gsm_upload).toFixed(1) : '–'}</b> Mbps · ⏱ {popupInfo.gsm_latency != null ? Number(popupInfo.gsm_latency).toFixed(0) : '–'} ms
                 </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 700, marginBottom: '3px' }}>🌐 Karasal</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: '3px' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 700 }}>🌐 Karasal</span>
+                  {getTerrestrialType(popupInfo) === 'tti' && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: '0.6rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: 3, padding: '1px 4px' }}>
+                      {getTTIIcon(10)} TTI
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: '0.75rem' }}>
                   ↓ <b>{popupInfo.metro_download != null ? Number(popupInfo.metro_download).toFixed(1) : '–'}</b> / ↑ <b>{popupInfo.metro_upload != null ? Number(popupInfo.metro_upload).toFixed(1) : '–'}</b> Mbps · ⏱ {popupInfo.metro_latency != null ? Number(popupInfo.metro_latency).toFixed(0) : '–'} ms
                 </div>
@@ -1138,7 +1197,7 @@ export default function MapView({
 
           {/* Aktif Hat butonu */}
           {(() => {
-            const connectionActive = !!(vpnMapFilter || satelliteFilter);
+            const connectionActive = !!(vpnMapFilter || satelliteFilter || terrestrialFilter);
             const open = openFilterPanel === 'connection';
             return (
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -1152,10 +1211,10 @@ export default function MapView({
                     display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160,
                     animation: 'fadeIn 0.15s ease',
                   }}>
-                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Aktif Hat (SDWAN)</span>
+                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>{t('active_link_sdwan')}</span>
                     {([
                       { key: 'GSM'   as const, label: 'GSM',     Icon: Signal,    hex: '#a855f7' },
-                      { key: 'METRO' as const, label: 'Karasal', Icon: Wifi,      hex: '#38bdf8' },
+                      { key: 'METRO' as const, label: t('karasal'), Icon: Wifi,      hex: '#38bdf8' },
                       { key: 'HUB'   as const, label: 'Hub',     Icon: GitBranch, hex: '#06b6d4' },
                     ] as const).map(({ key, label, Icon, hex }) => {
                       const isActive = vpnMapFilter === key;
@@ -1176,7 +1235,7 @@ export default function MapView({
                       );
                     })}
                     <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
-                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Uydu Bağlantısı</span>
+                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{t('satellite_connection')}</span>
                     {SAT_OPTIONS.map(opt => {
                       const isActive = satelliteFilter === opt.value;
                       const cnt = filteredMissions.filter(m => getSatType(m) === opt.value).length;
@@ -1191,9 +1250,33 @@ export default function MapView({
                           cursor: 'pointer', transition: 'all 0.12s',
                         }}>
                           <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', filter: isActive ? 'none' : 'opacity(0.5)' }}>
-                            {/* Renkli mini ikon kutusu */}
                             <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 5, background: opt.hex }}>
                               {getSatIcon(opt.value, 12)}
+                            </span>
+                          </span>
+                          <span style={{ flex: 1 }}>{opt.label}</span>
+                          <span style={{ background: isActive ? opt.hex : 'var(--bg-elevated)', color: isActive ? '#fff' : 'var(--text-muted)', borderRadius: 99, fontSize: '0.6rem', fontWeight: 800, padding: '1px 6px' }}>{cnt}</span>
+                        </button>
+                      );
+                    })}
+                    <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
+                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{t('terrestrial_connection')}</span>
+                    {TERR_OPTIONS.map(opt => {
+                      const isActive = terrestrialFilter === opt.value;
+                      const cnt = filteredMissions.filter(m => getTerrestrialType(m) === opt.value).length;
+                      return (
+                        <button key={opt.value} onClick={() => setTerrestrialFilter(p => p === opt.value ? null : opt.value)} style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '6px 10px', borderRadius: 8,
+                          background: isActive ? `${opt.hex}22` : 'transparent',
+                          border: `1px solid ${isActive ? `${opt.hex}88` : 'transparent'}`,
+                          color: isActive ? opt.hex : 'var(--text-secondary)',
+                          fontWeight: isActive ? 700 : 400, fontSize: '0.78rem',
+                          cursor: 'pointer', transition: 'all 0.12s',
+                        }}>
+                          <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', filter: isActive ? 'none' : 'opacity(0.5)' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 5, background: opt.hex }}>
+                              {getTTIIcon(12)}
                             </span>
                           </span>
                           <span style={{ flex: 1 }}>{opt.label}</span>
@@ -1237,12 +1320,12 @@ export default function MapView({
                     display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160,
                     animation: 'fadeIn 0.15s ease',
                   }}>
-                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Hız Filtresi</span>
+                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>{t('speed_filter')}</span>
                     {([
-                      { key: 'excellent' as const, label: 'Mükemmel', sub: '≥ 60 Mbps', hex: '#38bdf8' },
-                      { key: 'good'      as const, label: 'İyi',       sub: '30–60 Mbps', hex: '#f97316' },
-                      { key: 'poor'      as const, label: 'Zayıf',     sub: '< 30 Mbps',  hex: '#ef4444' },
-                      { key: 'nodata'    as const, label: 'Veri Yok',  sub: '—',           hex: '#6b7280' },
+                      { key: 'excellent' as const, label: t('speed_excellent'), sub: '≥ 60 Mbps',  hex: '#38bdf8' },
+                      { key: 'good'      as const, label: t('speed_good'),      sub: '30–60 Mbps', hex: '#f97316' },
+                      { key: 'poor'      as const, label: t('speed_poor'),      sub: '< 30 Mbps',  hex: '#ef4444' },
+                      { key: 'nodata'    as const, label: t('no_data'),         sub: '—',           hex: '#6b7280' },
                     ] as const).map(({ key, label, hex }) => {
                       const isActive = speedFilter === key;
                       const count = filteredMissions.filter(m => getSpeedTier(m) === key).length;

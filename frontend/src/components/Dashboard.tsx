@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Globe, TrendingUp, Wifi, Activity, Clock, MapPin, Zap, Calendar, X } from 'lucide-react';
 import { Mission, ActivityEntry, fmt, getBestDownload, getBestUpload } from '../types';
+import { useT } from '../i18n';
 
 export interface DateRange { startDate: string; endDate: string; }
 
@@ -49,6 +50,7 @@ function validateRange(r: DateRange): string {
 }
 
 export default function Dashboard({ missions, summary, continentReports, vpntypeReports, activityFeed, onLoadDashboard }: Props) {
+  const t = useT();
   const [range, setRange] = useState<DateRange>({ startDate: daysAgo(30), endDate: today() });
   const [topMetric, setTopMetric] = useState<'download'|'upload'>('download');
   const validationErr = validateRange(range);
@@ -65,13 +67,13 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
     .slice(0, 10), [missions, topMetric]);
 
   const kpis = useMemo(() => [
-    { label: 'Toplam Misyon', value: String(summary?.total_missions ?? missions.length), icon: <Globe size={20}/>, color: 'accent', unit: '' },
-    { label: 'Veri Olan', value: String(summary?.missions_with_data ?? '–'), icon: <MapPin size={20}/>, color: 'green', unit: '' },
-    { label: 'Toplam Test', value: String(Number(summary?.total_tests ?? 0)), icon: <Activity size={20}/>, color: 'blue', unit: '' },
-    { label: 'Ort. İndirme', value: fmt(summary?.global_avg_download), icon: <TrendingUp size={20}/>, color: 'green', unit: 'Mbps' },
-    { label: 'Ort. Yükleme', value: fmt(summary?.global_avg_upload), icon: <Zap size={20}/>, color: 'blue', unit: 'Mbps' },
-    { label: 'Ort. Gecikme', value: summary?.global_avg_latency ? fmt(summary.global_avg_latency, 0) : '—', icon: <Clock size={20}/>, color: 'amber', unit: summary?.global_avg_latency ? 'ms' : '' },
-  ], [summary, missions.length]);
+    { label: t('total_missions'), value: String(summary?.total_missions ?? missions.length), icon: <Globe size={20}/>, color: 'accent', unit: '' },
+    { label: t('missions_with_data'), value: String(summary?.missions_with_data ?? '–'), icon: <MapPin size={20}/>, color: 'green', unit: '' },
+    { label: t('total_tests'), value: String(Number(summary?.total_tests ?? 0)), icon: <Activity size={20}/>, color: 'blue', unit: '' },
+    { label: t('avg_download'), value: fmt(summary?.global_avg_download), icon: <TrendingUp size={20}/>, color: 'green', unit: 'Mbps' },
+    { label: t('avg_upload'), value: fmt(summary?.global_avg_upload), icon: <Zap size={20}/>, color: 'blue', unit: 'Mbps' },
+    { label: t('avg_latency'), value: summary?.global_avg_latency ? fmt(summary.global_avg_latency, 0) : '—', icon: <Clock size={20}/>, color: 'amber', unit: summary?.global_avg_latency ? 'ms' : '' },
+  ], [summary, missions.length, t]);
 
   const chartData = useMemo(() => continentReports
     .filter(r => r.continent && Number(r.avg_download) > 0)
@@ -92,14 +94,14 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div>
             <h1 style={{ fontSize: '1.6rem', fontWeight: 800, background: 'linear-gradient(135deg, #f0f6ff, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Ağ Durum Paneli
+              {t('dashboard_title')}
             </h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px' }}>
               {summary?.last_update_time ? `Son güncelleme: ${new Date(String(summary.last_update_time)).toLocaleString('tr-TR')}` : 'Gerçek zamanlı izleme'}
             </p>
           </div>
           <button className="btn btn-primary" onClick={handleApply} disabled={!isValid}>
-            <Activity size={14}/> Uygula
+            <Activity size={14}/> {t('apply')}
           </button>
         </div>
 
@@ -213,7 +215,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '16px', marginBottom: '20px' }}>
         {/* Continent Chart */}
         <div className="glass-card" style={{ padding: '20px' }}>
-          <div className="section-title">Kıta Bazlı Ortalama Hız</div>
+          <div className="section-title">{t('report_continents')} — {t('avg_download')}</div>
           {chartData.length === 0 ? (
             <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
               Veri yok — Raporları yüklemek için yenile
@@ -235,7 +237,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
 
         {/* VPN Type Comparison */}
         <div className="glass-card" style={{ padding: '20px' }}>
-          <div className="section-title">Hat Tipi Karşılaştırması</div>
+          <div className="section-title">{t('report_vpntypes')}</div>
           {vpnChartData.length === 0 ? (
             <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Veri yok</div>
           ) : (
@@ -312,10 +314,10 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
         {/* Top 10 */}
         <div className="glass-card" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <div className="section-title" style={{ marginBottom: 0 }}>En Hızlı 10 Misyon</div>
+            <div className="section-title" style={{ marginBottom: 0 }}>{t('top_missions')}</div>
             <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-base)', padding: '4px', borderRadius: '8px' }}>
-               <button onClick={() => setTopMetric('download')} className={`btn ${topMetric === 'download' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>↓ İndirme</button>
-               <button onClick={() => setTopMetric('upload')} className={`btn ${topMetric === 'upload' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>↑ Yükleme</button>
+               <button onClick={() => setTopMetric('download')} className={`btn ${topMetric === 'download' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>↓ {t('avg_download')}</button>
+               <button onClick={() => setTopMetric('upload')} className={`btn ${topMetric === 'upload' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>↑ {t('avg_upload')}</button>
             </div>
           </div>
           {topMissions.length === 0 ? (

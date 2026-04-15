@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useT } from '../i18n';
 import { FilterCombobox } from './FilterCombobox';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
 import { BarChart3, Filter, Download, Trophy, Globe, Activity, ListFilter, Calendar, X } from 'lucide-react';
@@ -53,14 +54,7 @@ const CustomTooltip = React.memo(({ active, payload, label }: any) => {
   return null;
 });
 
-const REPORT_TYPES: { value: ReportType; label: string }[] = [
-  { value: 'summary', label: 'Özet' },
-  { value: 'missions', label: 'Misyon' },
-  { value: 'countries', label: 'Ülke' },
-  { value: 'continents', label: 'Kıta' },
-  { value: 'vpntypes', label: 'Hat Tipi' },
-  { value: 'all', label: 'Tüm Kayıtlar' },
-];
+// REPORT_TYPES is rendered inside the component using t() — see reportTypeTabs below
 
 interface Props {
   missions: Mission[];
@@ -227,6 +221,15 @@ const StatCard = ({ title, value }: { title: string; value: string | number }) =
 );
 
 export default function Reports({ missions, filters, filterOptions, summary, missionReports, countryReports, continentReports, vpntypeReports, reports, sparklines, loading, onFiltersChange, onApply }: Props) {
+  const t = useT();
+  const reportTypeTabs = [
+    { value: 'summary' as ReportType, label: t('report_summary') },
+    { value: 'missions' as ReportType, label: t('report_missions') },
+    { value: 'countries' as ReportType, label: t('report_countries') },
+    { value: 'continents' as ReportType, label: t('report_continents') },
+    { value: 'vpntypes' as ReportType, label: t('report_vpntypes') },
+    { value: 'all' as ReportType, label: t('report_all') },
+  ];
   const [sortCol, setSortCol] = useState('');
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc');
   const [showAllVpnMissions, setShowAllVpnMissions] = useState(false);
@@ -376,15 +379,15 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
       <div style={{ padding: '24px 32px 0', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
           <BarChart3 size={22} color="var(--accent)"/>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>Ağ Raporları</h1>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{t('reports_title')}</h1>
         </div>
 
         {/* Report Type Tabs */}
         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          {REPORT_TYPES.map(t => (
-            <button key={t.value} className={`tab-btn ${filters.reportType === t.value ? 'active' : ''}`}
-              onClick={() => onFiltersChange({ ...filters, reportType: t.value, continent: '', country: '', missionId: '' })}>
-              {t.label}
+          {reportTypeTabs.map(tab => (
+            <button key={tab.value} className={`tab-btn ${filters.reportType === tab.value ? 'active' : ''}`}
+              onClick={() => onFiltersChange({ ...filters, reportType: tab.value, continent: '', country: '', missionId: '' })}>
+              {tab.label}
             </button>
           ))}
         </div>
@@ -408,7 +411,7 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
               {/* Başlık satırı */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
                 <Filter size={13} color="var(--accent)" />
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Filtreler</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('filters')}</span>
                 {hasFilter && (
                   <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: '99px', fontSize: '0.65rem', padding: '1px 8px', fontWeight: 700 }}>
                     {activeCount} aktif
@@ -423,7 +426,7 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
                   )}
                   <button className="btn btn-primary" onClick={onApply} disabled={loading}
                     style={{ fontSize: '0.74rem', padding: '4px 14px' }}>
-                    {loading ? 'Yükleniyor...' : 'Uygula'}
+                    {loading ? t('loading') : t('apply')}
                   </button>
                 </div>
               </div>
@@ -537,7 +540,7 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
               onClick={() => setExportMenuOpen(p => !p)}
               style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              <Download size={13}/> Dışa Aktar ▾
+              <Download size={13}/> {t('export')} ▾
             </button>
 
             {exportMenuOpen && (
@@ -589,19 +592,19 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
           <div className="fade-in" id="report-summary-charts">
             {/* Hızlı Filtre Barı */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', background: 'var(--card-bg)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <div style={{ flex: 1, alignSelf: 'center', fontSize: '1.2rem', fontWeight: 800, color: 'var(--text)' }}>NOC Yönetim Özeti</div>
-              <button disabled={nocLoading} onClick={() => setNocPeriod('daily')} className={`btn ${nocPeriod==='daily'?'btn-primary':'btn-secondary'}`}>Son 24 Saat</button>
-              <button disabled={nocLoading} onClick={() => setNocPeriod('weekly')} className={`btn ${nocPeriod==='weekly'?'btn-primary':'btn-secondary'}`}>Son 7 Gün</button>
-              <button disabled={nocLoading} onClick={() => setNocPeriod('monthly')} className={`btn ${nocPeriod==='monthly'?'btn-primary':'btn-secondary'}`}>Son 30 Gün</button>
+              <div style={{ flex: 1, alignSelf: 'center', fontSize: '1.2rem', fontWeight: 800, color: 'var(--text)' }}>{t('noc_summary')}</div>
+              <button disabled={nocLoading} onClick={() => setNocPeriod('daily')} className={`btn ${nocPeriod==='daily'?'btn-primary':'btn-secondary'}`}>{t('last_24h')}</button>
+              <button disabled={nocLoading} onClick={() => setNocPeriod('weekly')} className={`btn ${nocPeriod==='weekly'?'btn-primary':'btn-secondary'}`}>{t('last_7d')}</button>
+              <button disabled={nocLoading} onClick={() => setNocPeriod('monthly')} className={`btn ${nocPeriod==='monthly'?'btn-primary':'btn-secondary'}`}>{t('last_30d')}</button>
             </div>
 
             {/* Total Kartlar — period'a göre nocData'dan oku */}
             {(nocData || summary) && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '20px' }}>
-                <StatCard title="Toplam Ağ Misyonu" value={fmt(nocData?.total_missions ?? summary?.total_missions, 0)} />
-                <StatCard title="Veri Alınan Misyon" value={fmt(nocData?.missions_with_data ?? summary?.missions_with_data, 0)} />
-                <StatCard title="Küresel Trafik (İndirme)" value={`${fmt(nocData?.global_avg_download ?? summary?.global_avg_download)} Mbps`} />
-                <StatCard title="Küresel Trafik (Yükleme)" value={`${fmt(nocData?.global_avg_upload ?? summary?.global_avg_upload)} Mbps`} />
+                <StatCard title={t('total_missions')} value={fmt(nocData?.total_missions ?? summary?.total_missions, 0)} />
+                <StatCard title={t('missions_with_data')} value={fmt(nocData?.missions_with_data ?? summary?.missions_with_data, 0)} />
+                <StatCard title={t('global_download')} value={`${fmt(nocData?.global_avg_download ?? summary?.global_avg_download)} Mbps`} />
+                <StatCard title={t('global_upload')} value={`${fmt(nocData?.global_avg_upload ?? summary?.global_avg_upload)} Mbps`} />
               </div>
             )}
 

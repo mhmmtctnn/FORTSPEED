@@ -15,6 +15,7 @@ import {
   View, VpnTab,
   Mission, StatPoint, Filters, CityRow, ActivityEntry,
 } from './types';
+import { LanguageProvider, useT } from './i18n';
 import { useMissions, useCities, useFilterOptions, useDashboardData, useReportsData, useCityMutations, useSparklines, useSdwan } from './hooks/useQueries';
 
 const API_BASE = '/api';
@@ -26,6 +27,8 @@ interface AppSettings {
   showArcs: boolean;
   theme?: 'dark' | 'light';
   merkezFW?: { lat: number; lon: number; name: string };
+  locale?: string;
+  logo?: string;
 }
 
 interface UnknownDeviceAlert {
@@ -35,14 +38,14 @@ interface UnknownDeviceAlert {
   time: string;
 }
 
-const NAV = [
-  { view: 'dashboard' as View, icon: <LayoutDashboard size={20}/>, label: 'Panel' },
-  { view: 'map'       as View, icon: <MapIcon size={20}/>,          label: 'Harita' },
-  { view: 'reports'   as View, icon: <BarChart3 size={20}/>,        label: 'Raporlar' },
-  { view: 'missions'  as View, icon: <List size={20}/>,             label: 'Misyonlar' },
-  { view: 'logs'      as View, icon: <Activity size={20}/>,         label: 'İzleme' },
-  { view: 'sdwan'     as View, icon: <GitBranch size={20}/>,        label: 'SDWAN' },
-  { view: 'settings'  as View, icon: <Settings2 size={20}/>,        label: 'Ayarlar' },
+const NAV_DEFS = [
+  { view: 'dashboard' as View, icon: <LayoutDashboard size={20}/>, key: 'nav_dashboard' },
+  { view: 'map'       as View, icon: <MapIcon size={20}/>,          key: 'nav_map'       },
+  { view: 'reports'   as View, icon: <BarChart3 size={20}/>,        key: 'nav_reports'   },
+  { view: 'missions'  as View, icon: <List size={20}/>,             key: 'nav_missions'  },
+  { view: 'logs'      as View, icon: <Activity size={20}/>,         key: 'nav_logs'      },
+  { view: 'sdwan'     as View, icon: <GitBranch size={20}/>,        key: 'nav_sdwan'     },
+  { view: 'settings'  as View, icon: <Settings2 size={20}/>,        key: 'nav_settings'  },
 ];
 
 const queryClient = new QueryClient({
@@ -56,7 +59,10 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   const qc = useQueryClient();
+  const t = useT();
   const [view, setView] = useState<View>('dashboard');
+
+  const NAV = NAV_DEFS.map(n => ({ ...n, label: t(n.key) }));
   
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     try {
@@ -84,6 +90,18 @@ function AppContent() {
   const [popupInfo, setPopupInfo] = useState<Mission | null>(null);
   const [activityFeed, setActivityFeed] = useState<ActivityEntry[]>([]);
   const [alerts, setAlerts] = useState<UnknownDeviceAlert[]>([]);
+
+  // Kalıcı bilinmeyen cihaz kuyruğu — localStorage'da saklanır
+  const [pendingDevices, setPendingDevices] = useState<UnknownDeviceAlert[]>(() => {
+    try { const s = localStorage.getItem('speedtest_pending_devices'); return s ? JSON.parse(s) : []; }
+    catch { return []; }
+  });
+  useEffect(() => {
+    localStorage.setItem('speedtest_pending_devices', JSON.stringify(pendingDevices));
+  }, [pendingDevices]);
+  const handleDismissPending = useCallback((deviceName: string) => {
+    setPendingDevices(prev => prev.filter(d => d.deviceName !== deviceName));
+  }, []);
   
   // Dashboard & Reports Queries
   const [dashboardRange, setDashboardRange] = useState<DateRange | undefined>(undefined);
@@ -111,12 +129,17 @@ function AppContent() {
 
       // Bilinmeyen cihaz uyarısı
       if (msg.type === 'unknown_device') {
-        setAlerts(prev => [{
+        const entry: UnknownDeviceAlert = {
           id: `alert-${Date.now()}`,
           deviceName: msg.deviceName,
           vpnName: msg.vpnName,
           time: new Date(msg.time).toLocaleTimeString('tr-TR'),
-        }, ...prev.slice(0, 4)]);
+        };
+        setAlerts(prev => [entry, ...prev.slice(0, 4)]);
+        // Kalıcı kuyruğa da ekle — aynı cihaz zaten varsa ekleme
+        setPendingDevices(prev =>
+          prev.some(d => d.deviceName === msg.deviceName) ? prev : [entry, ...prev]
+        );
         return;
       }
 
@@ -319,7 +342,10 @@ function AppContent() {
                   VPN: <span style={{ color: '#fde68a' }}>{a.vpnName}</span>
                 </div>
               )}
-              <div style={{ fontSize: 11, color: '#f87171', marginBottom: 10 }}>{a.time} • Hız verisi kaydedilmedi</div>
+              <div style={{ fontSize: 11, color: '#f87171', marginBottom: 6 }}>{a.time} • Hız verisi kaydedilmedi</div>
+              <div style={{ fontSize: 11, color: '#fde68a', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}>
+                ✓ Kayıtsız cihazlar listesine eklendi
+              </div>
               <button
                 onClick={() => { handleSetView('missions'); setAlerts(prev => prev.filter(x => x.id !== a.id)); }}
                 style={{
@@ -328,7 +354,7 @@ function AppContent() {
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}
               >
-                <List size={13}/> Misyon Yönetimi'ne Git &amp; Ekle
+                <List size={13}/> Misyon Yönetimi&apos;ne Git &amp; Ekle
               </button>
             </div>
           ))}
@@ -336,8 +362,14 @@ function AppContent() {
       )}
       {/* Sidebar */}
       <nav className="sidebar">
-        <div className="sidebar-logo">
-          <ShieldCheck size={20} color="white"/>
+        <div
+          className="sidebar-logo"
+          style={appSettings.logo ? { background: 'transparent', boxShadow: 'none', padding: 2 } : {}}
+        >
+          {appSettings.logo
+            ? <img src={appSettings.logo} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8 }} />
+            : <ShieldCheck size={20} color="white"/>
+          }
         </div>
         {NAV.map(n => (
           <button
@@ -348,17 +380,17 @@ function AppContent() {
             style={{ position: 'relative' }}
           >
             {n.icon}
-            {n.view === 'missions' && alerts.length > 0 && (
+            {n.view === 'missions' && pendingDevices.length > 0 && (
               <span style={{
                 position: 'absolute', top: 4, right: 4,
-                background: '#ef4444', color: '#fff',
+                background: '#f59e0b', color: '#000',
                 borderRadius: '99px', fontSize: '0.6rem', fontWeight: 700,
                 minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: '0 3px', lineHeight: 1, pointerEvents: 'none',
-                boxShadow: '0 0 6px rgba(239,68,68,0.8)',
+                boxShadow: '0 0 6px rgba(245,158,11,0.8)',
                 animation: 'pulse-glow 1.5s ease-in-out infinite',
               }}>
-                {alerts.length}
+                {pendingDevices.length}
               </span>
             )}
           </button>
@@ -433,6 +465,8 @@ function AppContent() {
             onAdd={handleAddCity as any}
             onUpdate={handleUpdateCity as any}
             onDelete={handleDeleteCity as any}
+            pendingDevices={pendingDevices}
+            onDismissPending={handleDismissPending}
           />
         )}
 
@@ -453,8 +487,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppContent />
-    </QueryClientProvider>
+    <LanguageProvider>
+      <QueryClientProvider client={queryClient}>
+        <AppContent />
+      </QueryClientProvider>
+    </LanguageProvider>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useT } from '../i18n';
 import {
   Activity, RefreshCw, AlertTriangle, Wifi, Terminal,
   ChevronDown, ChevronUp, ArrowDown, ArrowUp,
@@ -84,6 +85,7 @@ interface LogViewerProps {
 }
 
 export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
+  const translate = useT();
   const [tab, setTab]           = useState<TabType>('WEBHOOK');
   const [sysLogs, setSysLogs]   = useState<SystemLog[]>([]);
   const [whkLogs, setWhkLogs]   = useState<WebhookLog[]>([]);
@@ -235,7 +237,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
       <div style={{ padding: '24px 32px 0', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
-            <h1 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>İzleme Merkezi</h1>
+            <h1 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>{translate('logs_title')}</h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 2 }}>
               Son güncelleme: {refresh.toLocaleTimeString('tr-TR')} · her 15s otomatik
             </p>
@@ -271,7 +273,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               onClick={() => { setTab(t); setExpanded(null); }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
               {t === 'WEBHOOK' ? <Wifi size={13} /> : <Terminal size={13} />}
-              {t === 'WEBHOOK' ? 'Webhook İzi' : 'Sistem Olayları'}
+              {t === 'WEBHOOK' ? translate('logs_webhook') : translate('logs_system')}
               <span style={{
                 background: tab === t ? 'var(--accent)' : 'var(--bg-elevated)',
                 color: tab === t ? 'white' : 'var(--text-muted)',
@@ -284,7 +286,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
           <button className={`tab-btn ${tab === 'DIAG' ? 'active' : ''}`}
             onClick={() => { setTab('DIAG'); setExpanded(null); }}
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
-            <Stethoscope size={13} /> Tanı
+            <Stethoscope size={13} /> {translate('logs_diag')}
           </button>
 
           {/* Zaman aralığı — DIAG sekmesinde gizle */}
@@ -319,7 +321,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               background: showFilters ? 'var(--accent-dim)' : undefined,
             }}>
             <SlidersHorizontal size={13} />
-            Filtrele
+            {translate('filters')}
             {activeBadge > 0 && (
               <span style={{ background: 'var(--accent)', color: 'white', borderRadius: 8, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>
                 {activeBadge}
@@ -555,11 +557,11 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
       </div>
 
       {/* ── Content ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 32px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px 16px' }}>
 
         {/* Empty */}
         {!loading && tab !== 'DIAG' && (tab === 'WEBHOOK' ? filteredWhk : filteredSys).length === 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: '60%', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: '60%', color: 'var(--text-muted)', paddingTop: 16 }}>
             <Activity size={36} style={{ opacity: 0.2 }} />
             <p style={{ fontSize: 13 }}>
               {activeBadge > 0 ? 'Filtrelerle eşleşen kayıt yok' : 'Henüz kayıt yok'}
@@ -583,7 +585,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               background: 'var(--bg-base)',
               display: 'grid',
               gridTemplateColumns: '4px minmax(120px,180px) 60px minmax(160px,1fr) minmax(80px,160px) 72px 14px',
-              gap: '0 12px', padding: '6px 14px',
+              gap: '0 12px', padding: '12px 14px 6px',
               fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
               letterSpacing: '0.07em', color: 'var(--text-muted)',
               borderBottom: '1px solid var(--border)',
@@ -710,7 +712,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
 
         {/* ── DIAG panel ── */}
         {tab === 'DIAG' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 900 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 900, paddingTop: 16 }}>
             {!diag && (
               <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: 24, textAlign: 'center' }}>
                 <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} /><br/>Tanı verileri yükleniyor...
@@ -743,21 +745,123 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                 )}
               </div>
 
-              {/* Günlük webhook sayıları */}
+              {/* Günlük webhook sayıları — bar chart */}
               <div className="glass-card" style={{ padding: 20 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: 14 }}>Son 7 Gün Webhook Sayısı</div>
-                {diag.dailyWebhookCounts?.length > 0 ? (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {diag.dailyWebhookCounts.map((d: any) => (
-                      <div key={d.day} style={{ textAlign: 'center', padding: '8px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', fontFamily: 'monospace' }}>{d.count}</div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{new Date(d.day).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}</div>
+                {(() => {
+                  const DAY_NAMES = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+                  // SQL ORDER BY day DESC → eski→yeni sıraya çevir
+                  const counts: Array<{ day: string; count: number }> = (diag.dailyWebhookCounts ?? [])
+                    .slice()
+                    .reverse()
+                    .map((d: any) => ({ day: String(d.day).slice(0, 10), count: Number(d.count) }));
+
+                  const total = counts.reduce((s, d) => s + d.count, 0);
+                  const avg   = counts.length ? Math.round(total / counts.length) : 0;
+                  const max   = counts.length ? Math.max(...counts.map(d => d.count)) : 0;
+                  const todayStr = new Date().toISOString().slice(0, 10);
+
+                  const half = Math.ceil(counts.length / 2);
+                  const firstHalf  = counts.slice(0, half).reduce((s, d) => s + d.count, 0);
+                  const secondHalf = counts.slice(half).reduce((s, d) => s + d.count, 0);
+                  const trend = secondHalf > firstHalf ? 'up' : secondHalf < firstHalf ? 'down' : 'flat';
+
+                  return (
+                    <>
+                      {/* Başlık + özet istatistikler */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>Son 7 Gün Webhook Trafiği</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>FortiGate cihazlarından gelen hız testi bildirimleri</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 20 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '1.25rem', lineHeight: 1, fontFamily: 'monospace' }}>{total}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>toplam</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 800, color: 'var(--accent)', fontSize: '1.25rem', lineHeight: 1, fontFamily: 'monospace' }}>{avg}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>ort/gün</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{
+                              fontWeight: 800, fontSize: '1.25rem', lineHeight: 1,
+                              color: trend === 'up' ? 'var(--green)' : trend === 'down' ? 'var(--red)' : 'var(--text-muted)',
+                            }}>
+                              {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'}
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>trend</div>
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Son 7 günde webhook yok</div>
-                )}
+
+                      {counts.length > 0 ? (
+                        <>
+                          {/* Bar chart */}
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 96, marginBottom: 4 }}>
+                            {counts.map(d => {
+                              const isPeak  = d.count === max && max > 0;
+                              const isToday = d.day === todayStr;
+                              const barH    = max > 0 ? Math.max(4, Math.round((d.count / max) * 64)) : 4;
+                              const dayDate = new Date(d.day + 'T12:00:00');
+                              const dayName = DAY_NAMES[dayDate.getDay()];
+                              const dateStr = dayDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
+                              return (
+                                <div key={d.day} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
+                                  {/* Sayı */}
+                                  <div style={{
+                                    fontSize: isPeak ? 11 : 10, fontWeight: isPeak ? 800 : 600, fontFamily: 'monospace',
+                                    color: isPeak ? '#fbbf24' : d.count === 0 ? 'var(--border)' : 'var(--text-secondary)',
+                                  }}>
+                                    {d.count}
+                                  </div>
+                                  {/* Bar */}
+                                  <div style={{
+                                    width: '100%', height: barH,
+                                    background: isPeak
+                                      ? 'linear-gradient(180deg,#fbbf24,#f59e0b)'
+                                      : isToday
+                                        ? 'linear-gradient(180deg, var(--accent), #1d4ed8)'
+                                        : d.count === 0
+                                          ? 'var(--bg-elevated)'
+                                          : 'linear-gradient(180deg,rgba(59,130,246,0.55),rgba(29,78,216,0.35))',
+                                    borderRadius: '3px 3px 0 0',
+                                    border: `1px solid ${isPeak ? 'rgba(251,191,36,0.45)' : isToday ? 'rgba(59,130,246,0.5)' : 'var(--border)'}`,
+                                    boxShadow: isPeak ? '0 0 8px rgba(251,191,36,0.3)' : isToday ? '0 0 8px rgba(59,130,246,0.25)' : 'none',
+                                    transition: 'height 0.3s ease',
+                                  }} />
+                                  {/* Gün etiketi */}
+                                  <div style={{ textAlign: 'center', lineHeight: 1.3 }}>
+                                    <div style={{ fontSize: 9, fontWeight: isToday ? 700 : 500, color: isToday ? 'var(--accent)' : 'var(--text-muted)' }}>{dayName}</div>
+                                    <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>{dateStr}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Açıklama satırı */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <div style={{ width: 10, height: 10, borderRadius: 2, background: 'linear-gradient(180deg,#fbbf24,#f59e0b)', flexShrink: 0 }} />
+                              En yoğun gün
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <div style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--accent)', flexShrink: 0 }} />
+                              Bugün
+                            </div>
+                            <div style={{ marginLeft: 'auto', fontStyle: 'italic' }}>
+                              Her çubuk = o günkü toplam FortiGate bildirimi
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <XCircle size={14} /> Son 7 günde webhook yok
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Son gelen raw webhooklar — format tanısı için */}
@@ -827,7 +931,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               position: 'sticky', top: 0, zIndex: 5,
               background: 'var(--bg-base)',
               display: 'grid', gridTemplateColumns: '80px 90px 1fr',
-              gap: '0 16px', padding: '6px 16px',
+              gap: '0 16px', padding: '12px 16px 6px',
               fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
               letterSpacing: '0.07em', color: 'var(--text-muted)',
               borderBottom: '1px solid var(--border)',

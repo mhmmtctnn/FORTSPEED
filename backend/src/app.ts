@@ -674,6 +674,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
           c.BOYLAM as lon, c.ENLEM as lat,
           c.IsStarlink as is_starlink,
           c.SatelliteType as satellite_type,
+          c.TerrestrialType as terrestrial_type,
           gsm.DownloadSpeed   as gsm_download,   gsm.UploadSpeed   as gsm_upload,
           gsm.Latency         as gsm_latency,    gsm.DeviceName    as gsm_device,    gsm.MeasuredAt as gsm_test_time,
           metro.DownloadSpeed as metro_download,  metro.UploadSpeed as metro_upload,
@@ -1104,8 +1105,8 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // 12. Cities CRUD
   fastify.get('/api/cities', async (_request, reply) => {
     // CityID'ye göre sıralı dönür — Misyon Yönetiminde ID sıralı görünür
-    const withDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type FROM Cities ORDER BY CityID ASC';
-    const withoutDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type FROM Cities ORDER BY CityID ASC';
+    const withDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type FROM Cities ORDER BY CityID ASC';
+    const withoutDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type, NULL as terrestrial_type FROM Cities ORDER BY CityID ASC';
     try {
       const { rows } = await fastify.pg.query(withDeviceName);
       return rows;
@@ -1121,14 +1122,15 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   fastify.post('/api/cities', async (request, reply) => {
-    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type } = request.body as any;
+    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type, terrestrial_type } = request.body as any;
     if (!name) return reply.status(400).send({ error: 'name is required' });
     const satType = satellite_type || null;
+    const terrType = terrestrial_type || null;
     const isStarlinkVal = satType === 'starlink' ? true : (is_starlink ?? false);
     try {
       const { rows } = await fastify.pg.query(
-        'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM, DeviceName, IsStarlink, SatelliteType) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type',
-        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType]
+        'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM, DeviceName, IsStarlink, SatelliteType, TerrestrialType) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type',
+        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType, terrType]
       );
       // Redis cache'i temizle — yeni şehir webhook'ta hemen eşleşsin
       const cacheKeys = [`cityid:${name.toUpperCase()}`];
@@ -1150,15 +1152,57 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }
   });
 
+  fastify.post('/api/cities/bulk', async (request, reply) => {
+    const rows = request.body as Array<{
+      name: string; continent?: string; country?: string; city?: string;
+      type?: string; device_name?: string; lat?: number | null; lon?: number | null;
+      satellite_type?: string | null; terrestrial_type?: string | null;
+    }>;
+    if (!Array.isArray(rows) || rows.length === 0)
+      return reply.status(400).send({ error: 'empty body' });
+
+    const results: { success: number; inserted: string[]; errors: Array<{ row: string; error: string }> } =
+      { success: 0, inserted: [], errors: [] };
+
+    for (const row of rows) {
+      if (!row.name?.trim()) {
+        results.errors.push({ row: String(row.name ?? '?'), error: 'Misyon adı boş olamaz' });
+        continue;
+      }
+      const satType = row.satellite_type?.trim() || null;
+      const terrType = row.terrestrial_type?.trim() || null;
+      const isStarlink = satType === 'starlink';
+      try {
+        await fastify.pg.query(
+          `INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM, DeviceName, IsStarlink, SatelliteType, TerrestrialType)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [row.name.trim(), row.continent || null, row.country || null, row.city || null,
+           row.type || null, row.lat ?? null, row.lon ?? null,
+           row.device_name?.trim() || null, isStarlink, satType, terrType]
+        );
+        const keys = [`cityid:${row.name.toUpperCase()}`];
+        if (row.device_name) keys.push(`cityid:${row.device_name.toUpperCase()}`);
+        await Promise.all(keys.map(k => redis.del(k)));
+        results.success++;
+        results.inserted.push(row.name.trim());
+      } catch (e: any) {
+        results.errors.push({ row: row.name, error: e.detail ?? e.message ?? 'DB Error' });
+      }
+    }
+
+    return reply.status(200).send(results);
+  });
+
   fastify.put('/api/cities/:id', async (request, reply) => {
     const { id } = request.params as any;
-    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type } = request.body as any;
+    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type, terrestrial_type } = request.body as any;
     const satType = satellite_type || null;
+    const terrType = terrestrial_type || null;
     const isStarlinkVal = satType === 'starlink' ? true : (is_starlink ?? false);
     try {
       const { rows } = await fastify.pg.query(
-        'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7, DeviceName=$8, IsStarlink=$9, SatelliteType=$10 WHERE CityID=$11 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type',
-        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType, id]
+        'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7, DeviceName=$8, IsStarlink=$9, SatelliteType=$10, TerrestrialType=$11 WHERE CityID=$12 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type',
+        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType, terrType, id]
       );
       if (!rows.length) return reply.status(404).send({ error: 'Not found' });
       // Redis cache'i temizle — değişen cihaz adı bir sonraki webhook'ta geçerli olsun
@@ -1170,7 +1214,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       // DeviceName/IsStarlink kolonu henüz yoksa onsuz güncelle
       try {
         const { rows } = await fastify.pg.query(
-          'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7 WHERE CityID=$8 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type',
+          'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7 WHERE CityID=$8 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type, NULL as terrestrial_type',
           [name, continent, country, city, type, lat, lon, id]
         );
         if (!rows.length) return reply.status(404).send({ error: 'Not found' });
@@ -1341,6 +1385,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       `);
       await fastify.pg.query(`
         UPDATE Cities SET SatelliteType = 'starlink' WHERE IsStarlink = TRUE AND SatelliteType IS NULL;
+      `);
+      await fastify.pg.query(`
+        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS TerrestrialType VARCHAR(50) DEFAULT NULL;
       `);
       await fastify.pg.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_cities_devicename

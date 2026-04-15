@@ -2,6 +2,7 @@ export type View = 'map' | 'dashboard' | 'reports' | 'missions' | 'settings' | '
 export type ReportType = 'summary' | 'missions' | 'countries' | 'continents' | 'vpntypes' | 'all';
 export type VpnTab = 'GSM' | 'METRO' | 'HUB';
 export type SatelliteType = 'starlink' | 'turksat';
+export type TerrestrialType = 'tti';
 
 export interface Mission {
   id: number;
@@ -28,6 +29,7 @@ export interface Mission {
   hub_test_time?: string | null;
   is_starlink?: boolean;
   satellite_type?: SatelliteType | null;
+  terrestrial_type?: TerrestrialType | null;
 }
 
 export interface StatPoint {
@@ -68,6 +70,7 @@ export interface CityRow {
   device_name?: string | null; // FortiGate cihaz adı — boşsa CityName ile eşleştirilir
   is_starlink?: boolean;
   satellite_type?: SatelliteType | null;
+  terrestrial_type?: TerrestrialType | null;
 }
 
 export interface SdwanMember {

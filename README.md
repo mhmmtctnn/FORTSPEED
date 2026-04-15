@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.4.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.4.0)
+[![Version](https://img.shields.io/badge/version-1.5.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.5.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -268,6 +268,48 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.5.0 — 2026-04-15
+
+**i18n Multi-Language, Bulk Mission Import, Terrestrial Type & SDWAN Diagnostics**
+
+#### 🌍 i18n — Multi-Language Support
+- **`LanguageProvider` + `useT()` hook** — Global translation context injected at app root; all nav labels, page titles and component strings now use translation keys
+- **`translations.ts`** — Centralized translation catalogue (TR/EN) covering all UI strings: navigation, dashboard, map filters, SDWAN monitor, mission manager, reports, admin settings and log viewer
+- **`locale` setting** in `AppSettings` — User-selectable language persisted to `localStorage`; hot-swappable without page reload
+- `logo` field added to `AppSettings` for custom branding per deployment
+
+#### 📥 Bulk Mission CSV Import — MissionManager
+- **CSV Template Download** — One-click download of a pre-filled `misyon_sablonu.csv` with semicolon delimiter and Turkish BOM for correct Excel encoding; includes example rows covering GSM, Starlink and TTI missions
+- **`parseCsvText()`** — Robust CSV parser supporting both `;` and `,` delimiters, quoted fields, BOM stripping; maps 10 columns: Mission Name, Continent, Country, City/Province, Type, FortiGate Device Name, Lat, Lon, Satellite Type, Terrestrial Provider
+- **`/api/cities/bulk` endpoint** — New backend endpoint accepts an array of city rows, inserts each transactionally, flushes Redis cache per row and returns `{ success, inserted[], errors[] }` for detailed per-row feedback
+- **Import Preview UI** — Parsed rows shown in a table before submission; validation errors highlighted in orange; only valid rows submitted
+- **Post-import toast** — Success/error count displayed; city list auto-refreshed
+
+#### 🌐 TerrestrialType (TTI) Support
+- New `terrestrial_type` column added to `Cities` table via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` on startup
+- `TerrestrialType` TypeScript type exported from `types.ts`
+- Backend `POST /api/cities` and `PUT /api/cities/:id` accept and persist `terrestrial_type`
+- MissionManager form includes **Karasal Sağlayıcı** selector (TTI / none)
+
+#### 🔬 SDWAN Monitor — Diagnostics Tab
+- **`diag` tab** added alongside `status` and `history` — fetches `/api/debug/webhook-last` ring buffer and displays raw last-10 SDWAN payloads for live troubleshooting
+- New icons: `Stethoscope`, `CheckCircle`, `XCircle`, `TrendingUp` from lucide-react for diagnostics tab UI
+- Search bar and tab row combined into a single flex header for cleaner layout
+- All tab labels resolved through `useT()` translation hook
+
+#### 🔔 Persistent Unknown-Device Queue
+- **`pendingDevices` state** persisted to `localStorage` (`speedtest_pending_devices`) — unknown device alerts survive page reload
+- Duplicate device names de-duplicated in the queue; `handleDismissPending` callback removes individual entries
+- Alert toast now shows a ✓ confirmation line: *"Kayıtsız cihazlar listesine eklendi"*
+- NAV items refactored to `NAV_DEFS` with translation `key` fields; labels resolved at render time via `useT()`
+
+#### 🛠️ Backend & DB
+- `ALTER TABLE Cities ADD COLUMN IF NOT EXISTS TerrestrialType` runs on every startup (idempotent)
+- `GET /api/cities` fallback query includes `NULL as terrestrial_type` for older DB schemas
+- `withoutDeviceName` fallback query also returns `terrestrial_type: NULL` to keep API shape consistent
+
+---
 
 ### v1.4.0 — 2026-04-14
 
