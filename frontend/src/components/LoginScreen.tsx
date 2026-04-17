@@ -15,58 +15,125 @@ function project(lon: number, lat: number, W: number, H: number) {
   return { x, y };
 }
 
-// ─── City nodes ───────────────────────────────────────────────────────────────
+// ─── City nodes (62 nodes across all continents) ──────────────────────────────
 const NODES = [
-  // Europe
-  { lat: 51.5,  lon: -0.1,   type: 'hub'   as const },
-  { lat: 48.9,  lon:  2.3,   type: 'node'  as const },
-  { lat: 52.5,  lon: 13.4,   type: 'hub'   as const },
-  { lat: 41.0,  lon: 28.9,   type: 'alert' as const },
-  { lat: 39.9,  lon: 32.9,   type: 'hub'   as const },
-  { lat: 55.8,  lon: 37.6,   type: 'node'  as const },
-  { lat: 52.4,  lon:  4.9,   type: 'node'  as const },
-  { lat: 50.1,  lon:  8.7,   type: 'node'  as const },
-  { lat: 59.3,  lon: 18.1,   type: 'node'  as const },
-  { lat: 40.4,  lon: -3.7,   type: 'node'  as const },
-  // Middle East / Africa
-  { lat: 25.2,  lon: 55.3,   type: 'hub'   as const },
-  { lat: 24.7,  lon: 46.7,   type: 'node'  as const },
-  { lat: 30.1,  lon: 31.2,   type: 'hub'   as const },
-  { lat: 35.7,  lon: 51.4,   type: 'alert' as const },
-  { lat:  6.5,  lon:  3.4,   type: 'node'  as const },
-  { lat: -1.3,  lon: 36.8,   type: 'node'  as const },
-  { lat:-26.2,  lon: 28.0,   type: 'node'  as const },
-  // Asia
-  { lat: 19.1,  lon: 72.9,   type: 'hub'   as const },
-  { lat: 28.6,  lon: 77.2,   type: 'node'  as const },
-  { lat:  1.4,  lon:103.8,   type: 'hub'   as const },
-  { lat: 13.8,  lon:100.5,   type: 'node'  as const },
-  { lat: 22.3,  lon:114.2,   type: 'hub'   as const },
-  { lat: 31.2,  lon:121.5,   type: 'node'  as const },
-  { lat: 39.9,  lon:116.4,   type: 'hub'   as const },
-  { lat: 35.7,  lon:139.7,   type: 'hub'   as const },
-  { lat: 37.6,  lon:126.9,   type: 'node'  as const },
-  // Americas
-  { lat: 40.7,  lon: -74.0,  type: 'hub'   as const },
-  { lat: 43.7,  lon: -79.4,  type: 'node'  as const },
-  { lat: 34.1,  lon:-118.2,  type: 'node'  as const },
-  { lat: 19.4,  lon: -99.1,  type: 'node'  as const },
-  { lat: 25.8,  lon: -80.2,  type: 'node'  as const },
-  { lat:-23.5,  lon: -46.6,  type: 'hub'   as const },
-  { lat:-34.6,  lon: -58.4,  type: 'node'  as const },
-  // Oceania
-  { lat:-33.9,  lon:151.2,   type: 'hub'   as const },
+  // ── Europe (0-14) ──────────────────────────────────────────────────────────
+  { lat: 51.5,  lon:  -0.1,  type: 'hub'   as const },  //  0 London
+  { lat: 48.9,  lon:   2.3,  type: 'node'  as const },  //  1 Paris
+  { lat: 52.5,  lon:  13.4,  type: 'hub'   as const },  //  2 Berlin
+  { lat: 41.0,  lon:  28.9,  type: 'alert' as const },  //  3 Istanbul
+  { lat: 39.9,  lon:  32.9,  type: 'hub'   as const },  //  4 Ankara
+  { lat: 55.8,  lon:  37.6,  type: 'node'  as const },  //  5 Moscow
+  { lat: 52.4,  lon:   4.9,  type: 'node'  as const },  //  6 Amsterdam
+  { lat: 50.1,  lon:   8.7,  type: 'node'  as const },  //  7 Frankfurt
+  { lat: 59.3,  lon:  18.1,  type: 'node'  as const },  //  8 Stockholm
+  { lat: 40.4,  lon:  -3.7,  type: 'node'  as const },  //  9 Madrid
+  { lat: 45.5,  lon:  -0.6,  type: 'node'  as const },  // 10 Bordeaux
+  { lat: 45.5,  lon:   9.2,  type: 'node'  as const },  // 11 Milan
+  { lat: 37.9,  lon:  23.7,  type: 'node'  as const },  // 12 Athens
+  { lat: 47.8,  lon:  13.0,  type: 'node'  as const },  // 13 Vienna
+  { lat: 60.2,  lon:  24.9,  type: 'node'  as const },  // 14 Helsinki
+  // ── Middle East (15-20) ────────────────────────────────────────────────────
+  { lat: 25.2,  lon:  55.3,  type: 'hub'   as const },  // 15 Dubai
+  { lat: 24.7,  lon:  46.7,  type: 'node'  as const },  // 16 Riyadh
+  { lat: 30.1,  lon:  31.2,  type: 'hub'   as const },  // 17 Cairo
+  { lat: 35.7,  lon:  51.4,  type: 'alert' as const },  // 18 Tehran
+  { lat: 33.3,  lon:  44.4,  type: 'node'  as const },  // 19 Baghdad
+  { lat: 31.8,  lon:  35.2,  type: 'node'  as const },  // 20 Jerusalem
+  // ── Africa (21-26) ────────────────────────────────────────────────────────
+  { lat:  6.5,  lon:   3.4,  type: 'node'  as const },  // 21 Lagos
+  { lat: -1.3,  lon:  36.8,  type: 'node'  as const },  // 22 Nairobi
+  { lat:-26.2,  lon:  28.0,  type: 'hub'   as const },  // 23 Johannesburg
+  { lat:  5.6,  lon:  -0.2,  type: 'node'  as const },  // 24 Accra
+  { lat: 33.9,  lon:   9.6,  type: 'node'  as const },  // 25 Tunis
+  { lat:-18.9,  lon:  47.5,  type: 'node'  as const },  // 26 Antananarivo
+  // ── South Asia (27-30) ────────────────────────────────────────────────────
+  { lat: 19.1,  lon:  72.9,  type: 'hub'   as const },  // 27 Mumbai
+  { lat: 28.6,  lon:  77.2,  type: 'node'  as const },  // 28 Delhi
+  { lat: 13.1,  lon:  80.3,  type: 'node'  as const },  // 29 Chennai
+  { lat: 23.7,  lon:  90.4,  type: 'node'  as const },  // 30 Dhaka
+  // ── Southeast Asia (31-36) ────────────────────────────────────────────────
+  { lat:  1.4,  lon: 103.8,  type: 'hub'   as const },  // 31 Singapore
+  { lat: 13.8,  lon: 100.5,  type: 'node'  as const },  // 32 Bangkok
+  { lat: 14.1,  lon: 108.2,  type: 'node'  as const },  // 33 Hanoi
+  { lat:  3.1,  lon: 101.7,  type: 'node'  as const },  // 34 Kuala Lumpur
+  { lat: 10.8,  lon: 106.7,  type: 'node'  as const },  // 35 Ho Chi Minh
+  { lat: 14.6,  lon: 121.0,  type: 'node'  as const },  // 36 Manila
+  // ── East Asia (37-43) ─────────────────────────────────────────────────────
+  { lat: 22.3,  lon: 114.2,  type: 'hub'   as const },  // 37 Hong Kong
+  { lat: 31.2,  lon: 121.5,  type: 'node'  as const },  // 38 Shanghai
+  { lat: 39.9,  lon: 116.4,  type: 'hub'   as const },  // 39 Beijing
+  { lat: 35.7,  lon: 139.7,  type: 'hub'   as const },  // 40 Tokyo
+  { lat: 34.7,  lon: 135.5,  type: 'node'  as const },  // 41 Osaka
+  { lat: 37.6,  lon: 126.9,  type: 'node'  as const },  // 42 Seoul
+  { lat: 25.0,  lon: 121.5,  type: 'node'  as const },  // 43 Taipei
+  // ── North America (44-52) ─────────────────────────────────────────────────
+  { lat: 40.7,  lon: -74.0,  type: 'hub'   as const },  // 44 New York
+  { lat: 43.7,  lon: -79.4,  type: 'node'  as const },  // 45 Toronto
+  { lat: 34.1,  lon:-118.2,  type: 'hub'   as const },  // 46 Los Angeles
+  { lat: 19.4,  lon: -99.1,  type: 'node'  as const },  // 47 Mexico City
+  { lat: 25.8,  lon: -80.2,  type: 'node'  as const },  // 48 Miami
+  { lat: 37.8,  lon:-122.4,  type: 'hub'   as const },  // 49 San Francisco
+  { lat: 41.9,  lon: -87.6,  type: 'node'  as const },  // 50 Chicago
+  { lat: 45.5,  lon: -73.6,  type: 'node'  as const },  // 51 Montreal
+  { lat: 47.6,  lon:-122.3,  type: 'node'  as const },  // 52 Seattle
+  // ── South America (53-57) ─────────────────────────────────────────────────
+  { lat:-23.5,  lon: -46.6,  type: 'hub'   as const },  // 53 São Paulo
+  { lat:-34.6,  lon: -58.4,  type: 'node'  as const },  // 54 Buenos Aires
+  { lat:  4.7,  lon: -74.1,  type: 'node'  as const },  // 55 Bogota
+  { lat:-12.0,  lon: -77.0,  type: 'node'  as const },  // 56 Lima
+  { lat:-15.8,  lon: -47.9,  type: 'node'  as const },  // 57 Brasilia
+  // ── Oceania (58-61) ───────────────────────────────────────────────────────
+  { lat:-33.9,  lon: 151.2,  type: 'hub'   as const },  // 58 Sydney
+  { lat:-37.8,  lon: 144.9,  type: 'node'  as const },  // 59 Melbourne
+  { lat:-36.9,  lon: 174.8,  type: 'node'  as const },  // 60 Auckland
+  { lat:-27.5,  lon: 153.0,  type: 'node'  as const },  // 61 Brisbane
 ];
 
-// ─── Connection links ─────────────────────────────────────────────────────────
+// ─── Connection links (115 links) ────────────────────────────────────────────
 const LINKS = [
-  [0,1],[0,2],[0,6],[1,2],[2,7],[2,5],[6,7],[8,5],[9,1],[3,4],
-  [3,10],[3,12],[3,13],[4,10],[4,11],[2,12],
-  [12,14],[12,15],[14,15],[15,16],[10,12],
-  [10,17],[13,17],[17,18],[17,19],[19,20],[19,21],[21,22],[22,23],
-  [23,24],[24,25],[21,25],[22,24],
-  [26,27],[26,28],[26,30],[27,28],[28,29],[29,30],[26,31],[31,32],[30,31],
-  [0,26],[2,26],[5,23],[19,33],[24,33],[21,33],[10,17],
+  // ── Europe intra ───────────────────────────────────────────────────────────
+  [0,1],[0,2],[0,6],[0,9],[0,10],
+  [1,2],[1,6],[1,7],[1,9],[1,10],[1,11],
+  [2,6],[2,7],[2,8],[2,13],
+  [3,4],[3,12],[3,13],[3,20],
+  [4,15],[4,16],
+  [5,8],[5,14],[5,2],
+  [6,7],[7,11],[7,13],
+  [8,14],[9,10],[11,12],[11,13],[12,25],
+  // ── Europe ↔ Middle East ──────────────────────────────────────────────────
+  [3,15],[3,18],[3,19],[17,25],[17,20],[15,16],[15,18],[15,19],[18,19],[19,20],
+  // ── Middle East ↔ Africa ──────────────────────────────────────────────────
+  [17,21],[17,22],[15,22],[20,17],[22,23],[22,26],[21,24],[24,25],[25,17],
+  // ── Middle East / Africa ↔ South Asia ────────────────────────────────────
+  [15,27],[15,28],[22,27],[17,27],
+  // ── South Asia intra ─────────────────────────────────────────────────────
+  [27,28],[27,29],[28,29],[28,30],[29,31],[30,31],
+  // ── South Asia / SEA ─────────────────────────────────────────────────────
+  [27,31],[27,34],[29,32],[31,32],[31,34],[31,35],[32,34],[32,33],[33,35],[34,35],
+  // ── SEA ↔ East Asia ──────────────────────────────────────────────────────
+  [31,37],[35,37],[36,37],[33,38],[36,43],[37,38],[37,43],
+  // ── East Asia intra ──────────────────────────────────────────────────────
+  [38,39],[38,37],[39,40],[39,42],[40,41],[40,42],[40,43],[41,43],[42,43],
+  // ── Oceania intra ────────────────────────────────────────────────────────
+  [58,59],[58,61],[59,61],[58,60],[60,61],
+  // ── East Asia ↔ Oceania ──────────────────────────────────────────────────
+  [40,58],[40,60],[42,58],[31,58],
+  // ── North America intra ──────────────────────────────────────────────────
+  [44,45],[44,48],[44,50],[44,51],[45,51],[49,46],[49,52],[46,47],[46,48],
+  [50,45],[50,51],[52,49],[48,47],[47,55],
+  // ── South America intra ──────────────────────────────────────────────────
+  [53,54],[53,57],[53,55],[54,56],[55,56],[56,57],
+  // ── Americas N↔S ─────────────────────────────────────────────────────────
+  [44,53],[48,53],[55,44],[47,55],
+  // ── Transatlantic (Europe ↔ N.America) ───────────────────────────────────
+  [0,44],[0,51],[1,44],[2,44],[0,45],
+  // ── Transpacific (N.America ↔ Asia) ──────────────────────────────────────
+  [49,40],[49,42],[52,40],[46,40],[44,39],
+  // ── S.America ↔ Europe / Africa ──────────────────────────────────────────
+  [53,21],[53,9],[54,23],
+  // ── Indian Ocean (Africa/ME ↔ Asia/Oceania) ──────────────────────────────
+  [22,27],[23,58],[26,58],[15,31],
 ];
 
 // ─── Draw a GeoJSON ring as a canvas sub-path ─────────────────────────────────
@@ -179,52 +246,156 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
     const pts = NODES.map(n => project(n.lon, n.lat, W, H));
 
     // 5 ── Connection lines
-    LINKS.forEach(([ai, bi]) => {
+    // First, build a per-link activity map from independent packet phases
+    // (must compute this before drawing links)
+    const PHI     = 2.39996; // golden angle in radians — irrational → no synchronisation ever
+    const TOTAL   = 120;
+    const linkActivity = new Float32Array(LINKS.length);
+
+    for (let i = 0; i < TOTAL; i++) {
+      // Each packet has a unique, irrational phase offset — NO two packets ever reset together
+      const phaseOffset = i * PHI;
+      const speed       = 0.28 + (((i * 1.618) % 1)) * 0.38;   // per-packet speed, never repeating
+      const cycleT      = t * speed + phaseOffset;
+      const linkPhase   = Math.floor(cycleT);                    // which "lap" this packet is on
+      // Link index: mix lap + packet index with large primes → uniform distribution
+      const ci = Math.abs((linkPhase * 31337 + i * 9973) % LINKS.length);
+      linkActivity[ci] += 1;
+    }
+
+    LINKS.forEach(([ai, bi], li) => {
       const a = pts[ai]; const b = pts[bi];
       if (!a || !b) return;
       const dx = b.x - a.x; const dy = b.y - a.y;
       const dist = Math.hypot(dx, dy);
       if (dist > W * 0.65) return;
 
-      const alpha = 0.3 + 0.14 * Math.sin(t * 1.3 + ai * 0.7);
+      const act   = linkActivity[li];
+      const alpha = 0.12 + 0.18 * Math.sin(t * 0.9 + ai * 0.7) + Math.min(act * 0.12, 0.45);
+      const lw    = 0.6 + Math.min(act * 0.28, 2.2);
       const mx    = (a.x + b.x) / 2;
-      const my    = (a.y + b.y) / 2 - dist * 0.06;
+      const my    = (a.y + b.y) / 2 - dist * 0.07;
 
       ctx.save();
+      // Outer soft glow (composited under the line)
+      if (act > 0) {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.quadraticCurveTo(mx, my, b.x, b.y);
+        ctx.strokeStyle = `rgba(56,189,248,${Math.min(act * 0.055, 0.28)})`;
+        ctx.lineWidth   = lw + 6;
+        ctx.shadowBlur  = 0;
+        ctx.stroke();
+      }
+      // Crisp main line
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.quadraticCurveTo(mx, my, b.x, b.y);
       ctx.strokeStyle = `rgba(56,189,248,${alpha})`;
-      ctx.lineWidth   = 1.1;
+      ctx.lineWidth   = lw;
       ctx.shadowColor = '#38bdf8';
-      ctx.shadowBlur  = 6;
+      ctx.shadowBlur  = act > 0 ? 8 : 3;
       ctx.stroke();
       ctx.restore();
     });
 
-    // 6 ── Animated data packets
-    for (let i = 0; i < 22; i++) {
-      const ci   = (Math.floor(t / 0.8) * 13 + i * 7) % LINKS.length;
-      const prog = ((t * (0.45 + (i % 5) * 0.12)) % 1);
+    // 6 ── Animated data packets — golden-ratio phase system (NO GIF effect)
+    // Each of the 120 packets has a fully independent irrational phase offset.
+    // The link it travels, its position, and when it "wraps" are NEVER synchronised.
+    //
+    // Packet categories (by index range, all sharing the same loop):
+    //   0-44  → green  data packets (large, medium speed)
+    //  45-79  → cyan   control/ack  (small, fast)
+    //  80-99  → amber  alert/warn   (medium, medium)
+    // 100-114 → violet reverse ACK  (medium-small, slow)
+    // 115-119 → white  burst nodes  (large, very slow — rare)
+
+    for (let i = 0; i < TOTAL; i++) {
+      // ── Per-packet properties (deterministic, never changing) ─────────────
+      const phaseOffset = i * PHI;                              // irrational → no sync
+      const baseSpeed   = 0.26 + (((i * 1.618033) % 1)) * 0.40;
+      const cycleT      = t * baseSpeed + phaseOffset;
+      const lapIdx      = Math.floor(cycleT);                   // completed laps
+      const prog_       = cycleT - lapIdx;                      // 0..1 smooth, never jumps
+
+      // Link selection: mix lap + unique prime hash — uniform, no bursts
+      const ci = Math.abs((lapIdx * 31337 + i * 9973 + i * i * 7) % LINKS.length);
+
+      // Determine direction: odd laps go B→A for 25% of packets
+      const isReverse = (i % 4 === 3) ? (lapIdx % 2 === 1) : false;
+      const prog = isReverse ? 1 - prog_ : prog_;
+
       const [ai, bi] = LINKS[ci];
       const a = pts[ai]; const b = pts[bi];
       if (!a || !b) continue;
       const dx = b.x - a.x; const dy = b.y - a.y;
-      if (Math.hypot(dx, dy) > W * 0.65) continue;
+      const dist = Math.hypot(dx, dy);
+      if (dist > W * 0.65) continue;
 
       const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2 - Math.hypot(dx, dy) * 0.06;
-      const tp = 1 - prog;
-      const px = tp*tp*a.x + 2*tp*prog*mx + prog*prog*b.x;
-      const py = tp*tp*a.y + 2*tp*prog*my + prog*prog*b.y;
+      const my = (a.y + b.y) / 2 - dist * 0.07;
+
+      // ── Visual parameters by category ────────────────────────────────────
+      let r = 34, g = 197, b_ = 94;    // green
+      let sz = 2.6, trailLen = 7, glowR = 14;
+      if (i >= 45 && i < 80)  { r = 56;  g = 189; b_ = 248; sz = 1.5; trailLen = 5; glowR = 10; } // cyan
+      if (i >= 80 && i < 100) { r = 245; g = 158; b_ = 11;  sz = 2.2; trailLen = 6; glowR = 12; } // amber
+      if (i >= 100 && i < 115){ r = 167; g = 139; b_ = 250; sz = 1.8; trailLen = 5; glowR = 10; } // violet
+      if (i >= 115)           { r = 220; g = 240; b_ = 255; sz = 3.4; trailLen = 9; glowR = 18; } // white burst
+
+      // ── Trail ─────────────────────────────────────────────────────────────
+      // Each trail segment is independently computed — smooth gradient tail
+      for (let tr = 0; tr < trailLen; tr++) {
+        const step = tr * 0.018;
+        const tp_ = Math.max(0.0001, prog - step);
+        const tp  = 1 - tp_;
+        const tx  = tp*tp*a.x + 2*tp*tp_*mx + tp_*tp_*b.x;
+        const ty  = tp*tp*a.y + 2*tp*tp_*my + tp_*tp_*b.y;
+
+        const tAlpha = (1 - tr / trailLen) * 0.42;
+        const tSz    = sz * (0.85 - tr * 0.082);
+        if (tSz < 0.3) continue;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(tx, ty, tSz, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r},${g},${b_},${tAlpha})`;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // ── Packet head ───────────────────────────────────────────────────────
+      const tp  = 1 - prog;
+      const px  = tp*tp*a.x + 2*tp*prog*mx + prog*prog*b.x;
+      const py  = tp*tp*a.y + 2*tp*prog*my + prog*prog*b.y;
+      const alf = 0.95 - prog * 0.1;   // stays bright all along the path
 
       ctx.save();
+
+      // Soft outer halo
+      const radGrad = ctx.createRadialGradient(px, py, 0, px, py, sz + 4);
+      radGrad.addColorStop(0, `rgba(${r},${g},${b_},0.22)`);
+      radGrad.addColorStop(1, `rgba(${r},${g},${b_},0)`);
       ctx.beginPath();
-      ctx.arc(px, py, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle   = `rgba(34,197,94,${0.92 - prog * 0.4})`;
-      ctx.shadowColor = '#22c55e';
-      ctx.shadowBlur  = 12;
+      ctx.arc(px, py, sz + 4, 0, Math.PI * 2);
+      ctx.fillStyle = radGrad;
       ctx.fill();
+
+      // Core dot
+      ctx.beginPath();
+      ctx.arc(px, py, sz, 0, Math.PI * 2);
+      ctx.fillStyle   = `rgba(${r},${g},${b_},${alf})`;
+      ctx.shadowColor = `rgb(${r},${g},${b_})`;
+      ctx.shadowBlur  = glowR;
+      ctx.fill();
+
+      // Specular highlight (top-left rim)
+      ctx.beginPath();
+      ctx.arc(px - sz * 0.28, py - sz * 0.28, sz * 0.38, 0, Math.PI * 2);
+      ctx.fillStyle   = 'rgba(255,255,255,0.82)';
+      ctx.shadowBlur  = 0;
+      ctx.fill();
+
       ctx.restore();
     }
 
@@ -374,12 +545,12 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
       <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{
           width: '100%', maxWidth: 430, margin: '0 16px',
-          background: 'rgba(3,8,18,0.90)',
-          backdropFilter: 'blur(28px) saturate(1.5)',
-          WebkitBackdropFilter: 'blur(28px) saturate(1.5)',
-          border: '1px solid rgba(56,189,248,0.22)',
+          background: 'rgba(3,8,18,0.45)',
+          backdropFilter: 'blur(16px) saturate(1.8)',
+          WebkitBackdropFilter: 'blur(16px) saturate(1.8)',
+          border: '1px solid rgba(56,189,248,0.32)',
           borderRadius: 22,
-          boxShadow: '0 28px 80px rgba(0,0,0,0.85), inset 0 1px 0 rgba(56,189,248,0.13)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(56,189,248,0.2), inset 0 0 40px rgba(56,189,248,0.03)',
           overflow: 'hidden',
           animation: shake ? 'lshake 0.5s ease' : 'lfadein 0.6s ease',
         }}>

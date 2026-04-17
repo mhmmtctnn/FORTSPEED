@@ -17,10 +17,11 @@ export function detectPayloadType(body: string): 'speedtest' | 'sdwan_members' |
   if (hasStatus)  return 'sdwan_status';
   if (hasMembers) return 'sdwan_members';
   if (/up_speed:|down_speed:|execute speed-test-ipsec|upload[_-]?speed|download[_-]?speed/i.test(body)) return 'speedtest';
-  // FortiGate SDWAN komut satırı (çıktısız) — "DEVICE diagnose sys session list | grep sdwan"
-  //                                            "DEVICE show system sdwan"
+  // FortiGate SDWAN komut satırı / diagnose sys sdwan member çıktısı
   // Not: [^\n]* yerine .* kullanmak ReDoS riski oluşturur
   if (/diagnose[ \t]+sys[ \t]+session[^\n]*sdwan|show[ \t]+system[ \t]+sdwan/i.test(body)) return 'sdwan_status';
+  // "diagnose sys sdwan member" çıktısı: "member N:name=IFACE_NAME" satırı içerir
+  if (/member[ \t]+\d+:name=\S/.test(body)) return 'sdwan_status';
   // JSON format: {"deviceName":"...","members":[...],...} veya {"sdwan":{...}}
   try {
     const j = JSON.parse(body);
@@ -126,6 +127,16 @@ export function parseSdwanStatus(body: string): {
   for (const line of lines) {
     const m = line.match(/sdwan_mbr_seq=(\d+)/);
     if (m) { activeMemberSeq = parseInt(m[1]); break; }
+  }
+  // "diagnose sys sdwan member" çıktısı: aktif üye "act_state=alive" satırından önce gelen "member N:name=..."
+  if (activeMemberSeq === null) {
+    for (let i = 0; i < lines.length - 1; i++) {
+      const seqM = lines[i].match(/member[ \t]+(\d+):name=/);
+      if (seqM && /act_state=alive/.test(lines[i] + (lines[i + 1] || ''))) {
+        activeMemberSeq = parseInt(seqM[1]);
+        break;
+      }
+    }
   }
 
   return { deviceName, activeMemberSeq };

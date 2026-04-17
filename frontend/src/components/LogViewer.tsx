@@ -178,7 +178,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
 
       // Serbest metin arama: IP, VPN adı
       if (q) {
-        const haystack = [log.sourceip, p.vpnName].join(' ').toLowerCase();
+        const haystack = [log.sourceip, p.vpnName, p.deviceName].join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
 
@@ -604,9 +604,10 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               const isHub  = /\bHUB\b|_HUB|HUB_/.test(vn);
               const open  = expanded === log.webhooklogid;
               const failed    = dl === null && ul === null;
+              const isConfig  = failed && p.payloadType === 'speedtest' && !p.downValue && !p.upValue; // yapılandırma bildirimi
               const unknown   = isUnknown(p.deviceName);
               const rowAccent = unknown ? 'var(--amber)'
-                : failed      ? 'var(--red)'
+                : failed      ? 'var(--text-muted)'  // N/A = gri (hata değil, config bildirim)
                 : dl != null  ? (dl >= 50 ? 'var(--green)' : dl >= 20 ? 'var(--accent)' : dl >= 5 ? 'var(--amber)' : 'var(--red)')
                 : 'var(--text-muted)';
 
@@ -646,11 +647,13 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center', overflow: 'hidden', minWidth: 0 }}>
                       {failed ? (
                         <span style={{
-                          fontSize: 11, fontWeight: 600, color: 'var(--red)',
-                          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                          fontSize: 11, fontWeight: 600,
+                          color: isConfig ? 'var(--text-muted)' : 'var(--amber)',
+                          background: isConfig ? 'var(--bg-elevated)' : 'rgba(245,158,11,0.1)',
+                          border: `1px solid ${isConfig ? 'var(--border)' : 'rgba(245,158,11,0.25)'}`,
                           borderRadius: 4, padding: '2px 8px', whiteSpace: 'nowrap',
                         }}>
-                          Test başarısız
+                          {isConfig ? 'Yapılandırma bildirimi' : 'Sonuç bekleniyor'}
                         </span>
                       ) : (
                         <>

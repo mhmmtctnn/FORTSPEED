@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.7.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.7.0)
+[![Version](https://img.shields.io/badge/version-1.8.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.8.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -32,6 +32,9 @@
 - 🔀 **SDWAN Monitor** — Real-time tracking of active interfaces and member topology per mission
 - 📋 **Webhook Log Viewer** — Live inspection of incoming FortiGate webhooks with full payload history
 - 🔗 **Hub VPN Support** — Third connection type (Hub) tracked alongside GSM and Metro
+- 🌍 **Cascade Geographic Selector** — Mission entry form with Continent → Country → City drill-down; coordinates auto-filled on selection
+- 🎨 **Glassmorphism Login Screen** — Animated world map canvas with 62 global nodes, 115 connection links, 120 multi-color data packets and golden-ratio phase system (no looping artifact)
+- 📊 **Smart N/A Classification** — Configuration-announcement webhooks correctly labeled (not counted as failures)
 
 ---
 
@@ -408,6 +411,38 @@ services:
 
 #### 🧪 Tests
 - `types.test.ts` updated to cover new `satellite_type`, `hub_*` fields and SDWAN interface type guards
+
+---
+
+### v1.8.0 — 2026-04-17
+
+**Login UX, Mission Form & Webhook Intelligence**
+
+#### 🎨 Login Screen — Advanced Canvas Animation
+- **62 global city nodes** across all continents (was 34), **115 connection links** (was 46)
+- **120 animated data packets** arranged in 5 categories: green data, cyan control, amber alert, violet reverse-ACK, white burst
+- **Golden-ratio phase system** — each packet uses an irrational `i × φ` offset so no two packets ever reset simultaneously, completely eliminating the GIF-loop artifact
+- **Trail / comet effect** — each packet leaves a 5–9 dot fading tail proportional to its category
+- **Dynamic link brightness** — link opacity and width scale with real-time per-link packet traffic
+- **Glossy packet head** — radial-gradient halo + specular highlight on every packet dot
+- **Glassmorphism login card** — `background: rgba(3,8,18,0.45)`, `backdropFilter: blur(16px)` so the live world map shows through the card
+- Transatlantic, transpacific and Indian Ocean intercontinental links added
+
+#### 🌍 Mission Manager — Cascade Geographic Selector
+- **Continent → Country → City** drill-down replaces free-text entry
+- Country dropdown is disabled until a continent is selected; city input is disabled until a country is selected
+- **Auto-coordinate fill** — selecting a country populates Lat/Lon with country center; selecting a city overrides with city-level coordinates
+- `datalist` city suggestions per country (30+ countries with major city lists)
+- Green ✓ indicator shows "Coordinates auto-filled" with current values
+- Form converted from inline grid into a **centered modal/panel** with backdrop blur for professional appearance
+
+#### 📋 Webhook Log Viewer — N/A Intelligence
+- Configuration-announcement webhooks (FortiGate sends protocol/port/VPN info before sending results) are now labeled **"Yapılandırma bildirimi"** (grey) instead of ❌ "Test başarısız" (red)
+- Row left-border color changed from red to grey for N/A packets
+- `isConfig` detection: `payloadType=speedtest` with no `downValue`/`upValue` = config packet, not a failure
+
+#### 🔧 Backend — SDWAN Timestamp Fix
+- `/api/sdwan` query now uses `GREATEST(ss.UpdatedAt, MAX(sm.UpdatedAt))` so the UI "Last Updated" timestamp reflects both status-table and member-table changes
 
 ---
 

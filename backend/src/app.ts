@@ -17,7 +17,7 @@ export interface AppOptions {
 }
 
 export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> {
-  const fastify = Fastify({ logger: opts.testing ? false : true });
+  const fastify = Fastify({ logger: opts.testing ? false : true, trustProxy: true });
 
   fastify.register(cors, { origin: true });
 
@@ -98,9 +98,15 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   }
 
   // ─── 1b. FortiGate Raw Text Webhook (BW/server.ps1 equivalent) ─────────────
+  // Fastify v5: '*' wildcard geçersiz/eksik Content-Type'ı yakalamıyor.
+  // Webhook path'leri için onRequest'te content-type normalize edilir.
+  fastify.addHook('onRequest', async (request, _reply) => {
+    const url = request.url ?? '';
+    if (url.startsWith('/webhook') || url.startsWith('/api/webhook')) {
+      request.headers['content-type'] = 'text/plain; charset=utf-8';
+    }
+  });
   fastify.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => done(null, body));
-  
-  // Catch-all parser for FortiManager (e.g. urlencoded or custom content types) to prevent 415 Unsupported Media Type
   fastify.addContentTypeParser('*', { parseAs: 'string' }, (_req, body, done) => done(null, body));
 
   /** Cihaz adına göre CityID bul — Redis cache (1 saat TTL), sonra DB.
@@ -130,8 +136,10 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   const webhookHandler = async (request: any, reply: any) => {
     const rawBody = (request.body as string) || '';
     const payloadType = detectPayloadType(rawBody);
+    // FortiGate otomasyon aksiyonları CLI prefix'i eklemez; cihaz adı query param'dan alınabilir
+    const queryDevice = (request.query as any)?.device || (request.query as any)?.deviceName || null;
 
-    fastify.log.info(`Webhook recv: type=${payloadType} len=${rawBody.length}`);
+    fastify.log.info(`Webhook recv: type=${payloadType} len=${rawBody.length} queryDevice=${queryDevice}`);
 
     // Ring buffer — tanı amaçlı son 10 webhook'u bellekte tut
     webhookRing.push({
@@ -144,32 +152,31 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     });
     if (webhookRing.length > 10) webhookRing.shift();
 
-    // ── Log raw webhook — sadece speedtest ve unknown tipler WebhookLogs'a gider
-    // SDWAN payload'ları kendi tablolarına (SdwanMembers/SdwanStatus) kaydedilir
+    // ── Log raw webhook — TÜM tipler WebhookLogs'a yazılır (tanı amaçlı)
     const isSdwan = payloadType === 'sdwan_members' || payloadType === 'sdwan_status' || payloadType === 'sdwan_combined' || payloadType === 'sdwan_json';
     let webhookLogId: number | null = null;
-    if (!isSdwan) {
-      try {
-        const logRes = await fastify.pg.query<{ webhooklogid: number }>(
-          `INSERT INTO WebhookLogs (SourceIP, RawPayload, ParsedContext) VALUES ($1, $2, $3) RETURNING WebhookLogID`,
-          [request.ip || 'UNKNOWN', rawBody, JSON.stringify({ payloadType })]
-        );
-        webhookLogId = logRes.rows[0]?.webhooklogid ?? null;
-      } catch (err) {
-        fastify.log.error(err, 'Failed to log webhook into WebhookLogs');
-      }
+    try {
+      const logRes = await fastify.pg.query<{ webhooklogid: number }>(
+        `INSERT INTO WebhookLogs (SourceIP, RawPayload, ParsedContext) VALUES ($1, $2, $3) RETURNING WebhookLogID`,
+        [request.ip || 'UNKNOWN', rawBody, JSON.stringify({ payloadType, isSdwan })]
+      );
+      webhookLogId = logRes.rows[0]?.webhooklogid ?? null;
+    } catch (err) {
+      fastify.log.error(err, 'Failed to log webhook into WebhookLogs');
     }
 
     // ── SDWAN COMBINED (members + status aynı body'de) ───────────────────────
     if (payloadType === 'sdwan_combined') {
       try {
-        const { deviceName, members } = parseSdwanMembers(rawBody);
-        const { activeMemberSeq }     = parseSdwanStatus(rawBody);
+        const parsed0 = parseSdwanMembers(rawBody);
+        const { activeMemberSeq } = parseSdwanStatus(rawBody);
+        const deviceName = parsed0.deviceName || queryDevice;
+        const members    = parsed0.members;
 
         fastify.log.info(`SDWAN combined parse: deviceName=${deviceName} members=${members.length} activeSeq=${activeMemberSeq}`);
         if (!deviceName) {
-          fastify.log.warn(`SDWAN combined PARSE_ERROR: deviceName null`);
-          return reply.status(400).send({ status: 'PARSE_ERROR', message: 'Cihaz adı parse edilemedi' });
+          fastify.log.warn(`SDWAN combined PARSE_ERROR: deviceName null (queryDevice=${queryDevice})`);
+          return reply.status(400).send({ status: 'PARSE_ERROR', message: 'Cihaz adı parse edilemedi. URL\'ye ?device=CIHAZ_ADI ekleyin.' });
         }
         const cityId = await findCityId(deviceName);
         fastify.log.info(`SDWAN combined cityId: device=${deviceName} cityId=${cityId}`);
@@ -294,11 +301,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     // ── SDWAN MEMBERS ─────────────────────────────────────────────────────────
     if (payloadType === 'sdwan_members') {
       try {
-        const { deviceName, members } = parseSdwanMembers(rawBody);
+        const parsed1 = parseSdwanMembers(rawBody);
+        const deviceName = parsed1.deviceName || queryDevice;
+        const members    = parsed1.members;
         fastify.log.info(`SDWAN members parse: deviceName=${deviceName} members=${members.length} rawLen=${rawBody.length} rawStart=${JSON.stringify(rawBody.slice(0, 300))}`);
         if (!deviceName || members.length === 0) {
-          fastify.log.warn(`SDWAN members PARSE_ERROR: deviceName=${deviceName} members=${members.length}`);
-          return reply.status(400).send({ status: 'PARSE_ERROR', message: 'SDWAN members parse edilemedi' });
+          fastify.log.warn(`SDWAN members PARSE_ERROR: deviceName=${deviceName} members=${members.length} queryDevice=${queryDevice}`);
+          return reply.status(400).send({ status: 'PARSE_ERROR', message: 'SDWAN members parse edilemedi. URL\'ye ?device=CIHAZ_ADI ekleyin.' });
         }
         const cityId = await findCityId(deviceName);
         fastify.log.info(`SDWAN members cityId lookup: device=${deviceName} cityId=${cityId}`);
@@ -338,9 +347,12 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     // ── SDWAN STATUS ──────────────────────────────────────────────────────────
     if (payloadType === 'sdwan_status') {
       try {
-        const { deviceName, activeMemberSeq } = parseSdwanStatus(rawBody);
+        const parsed2 = parseSdwanStatus(rawBody);
+        const deviceName     = parsed2.deviceName || queryDevice;
+        const activeMemberSeq = parsed2.activeMemberSeq;
         if (!deviceName) {
-          return reply.status(400).send({ status: 'PARSE_ERROR', message: 'SDWAN status parse edilemedi' });
+          fastify.log.warn(`SDWAN status PARSE_ERROR: deviceName null queryDevice=${queryDevice}`);
+          return reply.status(400).send({ status: 'PARSE_ERROR', message: 'SDWAN status parse edilemedi. URL\'ye ?device=CIHAZ_ADI ekleyin.' });
         }
         // activeMemberSeq yoksa sadece komut satırı geldi (çıktı henüz yok) — 200 dön, DB'ye yazma
         if (activeMemberSeq === null) {
@@ -1436,7 +1448,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
           c.CityName as city_name,
           ss.ActiveSeqID     as active_seq_id,
           ss.ActiveInterface as active_interface,
-          ss.UpdatedAt       as updated_at,
+          GREATEST(ss.UpdatedAt, MAX(sm.UpdatedAt)) as updated_at,
           json_agg(
             json_build_object(
               'seq_id',   sm.SeqID,
