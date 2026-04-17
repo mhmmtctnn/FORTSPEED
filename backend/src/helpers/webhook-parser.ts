@@ -239,10 +239,16 @@ export function parseSpeedTestBody(body: string) {
   if (!upValue) {
     const l = lines.find(ln => /\bthroughput\b|\bbandwidth\b/i.test(ln));
     if (l) {
-      // Not: alternation + \s* kombinasyonu backtrack riski oluşturur
-      // indexOf ile unit boundary'yi belirleyerek daha güvenli parse
-      const numM = l.match(/([0-9.,]+)[ \t]*(Gbps|Mbps|Kbps|bps)/i);
-      if (numM) { upValue = numM[1]; upUnit = numM[2]; }
+      // Tamamen regex'siz: boşlukla bölerek sayı + birim token'ı bul
+      const tokens = l.split(/[ \t]+/);
+      for (let ti = 0; ti < tokens.length - 1; ti++) {
+        const raw = tokens[ti].replace(',', '.');
+        if (!/^[0-9]+(?:\.[0-9]+)?$/.test(raw)) continue;
+        const unit = tokens[ti + 1].toLowerCase();
+        if (unit === 'gbps' || unit === 'mbps' || unit === 'kbps' || unit === 'bps') {
+          upValue = tokens[ti]; upUnit = tokens[ti + 1]; break;
+        }
+      }
     }
   }
 

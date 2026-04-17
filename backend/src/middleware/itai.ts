@@ -218,7 +218,8 @@ export async function registerItaiMiddleware(
   });
 
   // SSO Endpoint — always registered, returns 403 when disabled
-  fastify.post('/auth/sso', async (request: FastifyRequest, reply: FastifyReply) => {
+  // Rate limit: brute-force koruması için 5 deneme/dakika
+  fastify.post('/auth/sso', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request: FastifyRequest, reply: FastifyReply) => {
     if (!isItaiMode) {
       return reply.status(403).send({
         status: 'error',

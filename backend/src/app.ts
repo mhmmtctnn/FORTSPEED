@@ -503,11 +503,17 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }
   };
 
-  fastify.post('/api/webhook', webhookHandler);
-  fastify.post('/webhook', webhookHandler);
-  fastify.post('/', webhookHandler);
-  fastify.get('/api/webhook', webhookHandler);
-  fastify.get('/webhook', webhookHandler);
+  // Webhook route'ları için explicit rate-limit (CodeQL: missing rate limiting)
+  // Global limit zaten aktif; burada webhook endpoint'leri için özel sınır tanımlanıyor
+  const webhookRateLimit = opts.testing
+    ? undefined
+    : { max: 60, timeWindow: '1 minute' }; // FortiGate'den dakikada 60 webhook yeterli
+
+  fastify.post('/api/webhook', { config: { rateLimit: webhookRateLimit } }, webhookHandler);
+  fastify.post('/webhook',     { config: { rateLimit: webhookRateLimit } }, webhookHandler);
+  fastify.post('/',            { config: { rateLimit: webhookRateLimit } }, webhookHandler);
+  fastify.get('/api/webhook',  { config: { rateLimit: webhookRateLimit } }, webhookHandler);
+  fastify.get('/webhook',      { config: { rateLimit: webhookRateLimit } }, webhookHandler);
 
   // ─── Logs API ───────────────────────────────────────────────────────────────
   // Log retention: 30 gün — uygulama başlangıcında ve her gece temizlenir
@@ -645,7 +651,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   // ─── 1. Legacy JSON Webhook (backward compat) ───────────────────────────────
-  fastify.post('/webhook/speedtest', async (request, reply) => {
+  fastify.post('/webhook/speedtest', { config: { rateLimit: opts.testing ? undefined : { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { cityId, vpnTypeId, deviceName, downloadSpeed, uploadSpeed, latency, uploadStatus, downloadStatus } = request.body as any;
     const query = `
       INSERT INTO SpeedStats (CityID, VpnTypeID, DeviceName, DownloadSpeed, UploadSpeed, Latency, UploadStatus, DownloadStatus, MeasuredAt)
@@ -1343,7 +1349,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   /** Manuel SDWAN veri enjeksiyonu — FortiGate webhook olmadan test için.
    *  Body: { deviceName: string, members: [{seqId, interfaceName, cost?}], activeMemberSeq?: number } */
-  fastify.post('/api/sdwan/inject', async (request, reply) => {
+  fastify.post('/api/sdwan/inject', { config: { rateLimit: opts.testing ? undefined : { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as any;
     const { deviceName, members, activeMemberSeq } = body || {};
     if (!deviceName || !Array.isArray(members) || members.length === 0) {
