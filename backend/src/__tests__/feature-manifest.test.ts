@@ -110,6 +110,24 @@ const FEATURE_MANIFEST: Record<string, FeatureSpec> = {
     ],
     middleware: ['registerItaiMiddleware', 'verifyHS256Token', 'validateApiKey'],
   },
+
+  'Dinamik Tag Sistemi': {
+    description: 'Misyonlara özel etiketler — renk, ikon, sıralama yönetimi',
+    endpoints: [
+      ['GET',    '/api/tags'],
+      ['POST',   '/api/tags'],
+      ['PUT',    '/api/tags/1'],
+      ['DELETE', '/api/tags/1'],
+    ],
+  },
+
+  'Aktivite & Loglar': {
+    description: 'Son aktivite akışı ve sistem log görüntüleyici',
+    endpoints: [
+      ['GET', '/api/activity/recent'],
+      ['GET', '/api/logs/system'],
+    ],
+  },
 };
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -172,18 +190,18 @@ describe('Feature Manifest — Özellik Envanteri', () => {
   );
 
   // Toplam feature sayısı kontrolü
-  it('manifest en az 8 feature içermeli', () => {
-    expect(Object.keys(FEATURE_MANIFEST).length).toBeGreaterThanOrEqual(8);
+  it('manifest en az 10 feature içermeli', () => {
+    expect(Object.keys(FEATURE_MANIFEST).length).toBeGreaterThanOrEqual(10);
   });
 
   // Toplam benzersiz endpoint sayısı kontrolü
-  it('manifest toplam en az 20 benzersiz endpoint içermeli', () => {
+  it('manifest toplam en az 24 benzersiz endpoint içermeli', () => {
     const allEndpoints = new Set<string>();
     Object.values(FEATURE_MANIFEST).forEach(spec => {
       spec.endpoints.forEach(([method, path]) => {
         allEndpoints.add(`${method} ${path}`);
       });
     });
-    expect(allEndpoints.size).toBeGreaterThanOrEqual(20);
+    expect(allEndpoints.size).toBeGreaterThanOrEqual(24);
   });
 });

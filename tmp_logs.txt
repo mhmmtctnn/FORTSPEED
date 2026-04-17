@@ -1,0 +1,88 @@
+{"level":30,"time":1775670780896,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d5","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":54796},"msg":"incoming request"}
+{"level":30,"time":1775670780896,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775670780897,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d6","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":54798},"msg":"incoming request"}
+{"level":30,"time":1775670780897,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775670780912,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d5","res":{"statusCode":200},"responseTime":15.826731204986572,"msg":"request completed"}
+{"level":30,"time":1775670780922,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d6","res":{"statusCode":200},"responseTime":25.356910943984985,"msg":"request completed"}
+{"level":30,"time":1775670795899,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d7","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":44230},"msg":"incoming request"}
+{"level":30,"time":1775670795899,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775670795900,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d8","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":44232},"msg":"incoming request"}
+{"level":30,"time":1775670795900,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775670795912,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d7","res":{"statusCode":200},"responseTime":13.235395908355713,"msg":"request completed"}
+{"level":30,"time":1775670795923,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d8","res":{"statusCode":200},"responseTime":22.767380952835083,"msg":"request completed"}
+{"level":30,"time":1775670810897,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d9","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":45722},"msg":"incoming request"}
+{"level":30,"time":1775670810898,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775670810898,"pid":1,"hostname":"73ade7e37bed","reqId":"req-da","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":45734},"msg":"incoming request"}
+{"level":30,"time":1775670810898,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775670810911,"pid":1,"hostname":"73ade7e37bed","reqId":"req-d9","res":{"statusCode":200},"responseTime":13.159440994262695,"msg":"request completed"}
+{"level":30,"time":1775670810921,"pid":1,"hostname":"73ade7e37bed","reqId":"req-da","res":{"statusCode":200},"responseTime":22.293993949890137,"msg":"request completed"}
+{"level":30,"time":1775670825896,"pid":1,"hostname":"73ade7e37bed","reqId":"req-db","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":55440},"msg":"incoming request"}
+{"level":30,"time":1775670825896,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775670825896,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dc","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":55442},"msg":"incoming request"}
+{"level":30,"time":1775670825896,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775670825908,"pid":1,"hostname":"73ade7e37bed","reqId":"req-db","res":{"statusCode":200},"responseTime":12.178362846374512,"msg":"request completed"}
+{"level":30,"time":1775670825922,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dc","res":{"statusCode":200},"responseTime":25.56768298149109,"msg":"request completed"}
+{"level":30,"time":1775670828910,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dd","req":{"method":"GET","url":"/ws","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":55458},"msg":"incoming request"}
+{"level":30,"time":1775670828910,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /ws from 172.22.0.5"}
+{"level":30,"time":1775670828910,"pid":1,"hostname":"73ade7e37bed","msg":"Yeni WebSocket ba─şlant─▒s─▒"}
+{"level":30,"time":1775670886916,"pid":1,"hostname":"73ade7e37bed","reqId":"req-de","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":47774},"msg":"incoming request"}
+{"level":30,"time":1775670886916,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775670886917,"pid":1,"hostname":"73ade7e37bed","reqId":"req-df","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":47776},"msg":"incoming request"}
+{"level":30,"time":1775670886917,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775670886929,"pid":1,"hostname":"73ade7e37bed","reqId":"req-de","res":{"statusCode":200},"responseTime":12.204142093658447,"msg":"request completed"}
+{"level":30,"time":1775670886939,"pid":1,"hostname":"73ade7e37bed","reqId":"req-df","res":{"statusCode":200},"responseTime":22.306041955947876,"msg":"request completed"}
+{"level":30,"time":1775670892893,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dg","req":{"method":"GET","url":"/ws","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":45114},"msg":"incoming request"}
+{"level":30,"time":1775670892893,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /ws from 172.22.0.5"}
+{"level":30,"time":1775670892893,"pid":1,"hostname":"73ade7e37bed","msg":"Yeni WebSocket ba─şlant─▒s─▒"}
+{"level":30,"time":1775670947902,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dh","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":46178},"msg":"incoming request"}
+{"level":30,"time":1775670947902,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775670947903,"pid":1,"hostname":"73ade7e37bed","reqId":"req-di","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":46176},"msg":"incoming request"}
+{"level":30,"time":1775670947903,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775670947914,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dh","res":{"statusCode":200},"responseTime":12.10307502746582,"msg":"request completed"}
+{"level":30,"time":1775670947923,"pid":1,"hostname":"73ade7e37bed","reqId":"req-di","res":{"statusCode":200},"responseTime":20.493674993515015,"msg":"request completed"}
+{"level":30,"time":1775670956893,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dj","req":{"method":"GET","url":"/ws","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":55816},"msg":"incoming request"}
+{"level":30,"time":1775670956894,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /ws from 172.22.0.5"}
+{"level":30,"time":1775670956894,"pid":1,"hostname":"73ade7e37bed","msg":"Yeni WebSocket ba─şlant─▒s─▒"}
+{"level":30,"time":1775670966153,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dk","req":{"method":"POST","url":"/api/webhook","hostname":"192.168.20.134","remoteAddress":"172.22.0.1","remotePort":59168},"msg":"incoming request"}
+{"level":30,"time":1775670966154,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: POST /api/webhook from 172.22.0.1"}
+{"level":30,"time":1775670966155,"pid":1,"hostname":"73ade7e37bed","msg":"Webhook recv: device=ROMA-BE vpn=GSM up=null down=null"}
+{"level":40,"time":1775670966170,"pid":1,"hostname":"73ade7e37bed","msg":"H─▒z testi ba┼şar─▒s─▒z (ROMA-BE / GSM) ÔÇö download ve upload de─şeri al─▒namad─▒, SpeedStats'a yaz─▒lmad─▒."}
+{"level":30,"time":1775670966174,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dk","res":{"statusCode":200},"responseTime":20.565925121307373,"msg":"request completed"}
+{"level":30,"time":1775670968716,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dl","req":{"method":"POST","url":"/api/webhook","hostname":"192.168.20.134","remoteAddress":"172.22.0.1","remotePort":59176},"msg":"incoming request"}
+{"level":30,"time":1775670968717,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: POST /api/webhook from 172.22.0.1"}
+{"level":30,"time":1775670968718,"pid":1,"hostname":"73ade7e37bed","msg":"Webhook recv: device=ROMA-BE vpn=METRO up=null down=null"}
+{"level":40,"time":1775670968721,"pid":1,"hostname":"73ade7e37bed","msg":"H─▒z testi ba┼şar─▒s─▒z (ROMA-BE / METRO) ÔÇö download ve upload de─şeri al─▒namad─▒, SpeedStats'a yaz─▒lmad─▒."}
+{"level":30,"time":1775670968727,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dl","res":{"statusCode":200},"responseTime":10.94457483291626,"msg":"request completed"}
+{"level":30,"time":1775671008904,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dm","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":56202},"msg":"incoming request"}
+{"level":30,"time":1775671008904,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775671008904,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dn","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":56200},"msg":"incoming request"}
+{"level":30,"time":1775671008904,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775671008916,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dm","res":{"statusCode":200},"responseTime":12.135910987854004,"msg":"request completed"}
+{"level":30,"time":1775671008928,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dn","res":{"statusCode":200},"responseTime":23.540603160858154,"msg":"request completed"}
+{"level":30,"time":1775671020918,"pid":1,"hostname":"73ade7e37bed","reqId":"req-do","req":{"method":"GET","url":"/ws","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":38640},"msg":"incoming request"}
+{"level":30,"time":1775671020918,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /ws from 172.22.0.5"}
+{"level":30,"time":1775671020919,"pid":1,"hostname":"73ade7e37bed","msg":"Yeni WebSocket ba─şlant─▒s─▒"}
+{"level":30,"time":1775671069898,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dp","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":38892},"msg":"incoming request"}
+{"level":30,"time":1775671069898,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775671069899,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dq","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":38894},"msg":"incoming request"}
+{"level":30,"time":1775671069899,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775671069907,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dp","res":{"statusCode":200},"responseTime":9.287739992141724,"msg":"request completed"}
+{"level":30,"time":1775671069921,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dq","res":{"statusCode":200},"responseTime":21.990344047546387,"msg":"request completed"}
+{"level":30,"time":1775671084899,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dr","req":{"method":"GET","url":"/ws","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":48266},"msg":"incoming request"}
+{"level":30,"time":1775671084900,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /ws from 172.22.0.5"}
+{"level":30,"time":1775671084900,"pid":1,"hostname":"73ade7e37bed","msg":"Yeni WebSocket ba─şlant─▒s─▒"}
+{"level":30,"time":1775671130908,"pid":1,"hostname":"73ade7e37bed","reqId":"req-ds","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":51304},"msg":"incoming request"}
+{"level":30,"time":1775671130908,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775671130910,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dt","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":51310},"msg":"incoming request"}
+{"level":30,"time":1775671130910,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775671130922,"pid":1,"hostname":"73ade7e37bed","reqId":"req-ds","res":{"statusCode":200},"responseTime":13.956527948379517,"msg":"request completed"}
+{"level":30,"time":1775671130934,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dt","res":{"statusCode":200},"responseTime":24.125307083129883,"msg":"request completed"}
+{"level":30,"time":1775671148915,"pid":1,"hostname":"73ade7e37bed","reqId":"req-du","req":{"method":"GET","url":"/ws","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":47930},"msg":"incoming request"}
+{"level":30,"time":1775671148915,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /ws from 172.22.0.5"}
+{"level":30,"time":1775671148916,"pid":1,"hostname":"73ade7e37bed","msg":"Yeni WebSocket ba─şlant─▒s─▒"}
+{"level":30,"time":1775671191904,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dv","req":{"method":"GET","url":"/api/logs/webhooks","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":48168},"msg":"incoming request"}
+{"level":30,"time":1775671191904,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/webhooks from 172.22.0.5"}
+{"level":30,"time":1775671191905,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dw","req":{"method":"GET","url":"/api/logs/system","hostname":"localhost","remoteAddress":"172.22.0.5","remotePort":48166},"msg":"incoming request"}
+{"level":30,"time":1775671191905,"pid":1,"hostname":"73ade7e37bed","msg":"[DEBUG] INCOMING: GET /api/logs/system from 172.22.0.5"}
+{"level":30,"time":1775671191927,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dv","res":{"statusCode":200},"responseTime":22.11997699737549,"msg":"request completed"}
+{"level":30,"time":1775671191936,"pid":1,"hostname":"73ade7e37bed","reqId":"req-dw","res":{"statusCode":200},"responseTime":31.01412296295166,"msg":"request completed"}

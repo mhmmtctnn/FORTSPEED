@@ -27,6 +27,10 @@
     "react-map-gl": "^7.1.7",
     "recharts": "^2.12.0"
   },
+  "overrides": {
+    "esbuild": ">=0.25.0",
+    "brace-expansion": ">=1.1.13"
+  },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^15.0.2",

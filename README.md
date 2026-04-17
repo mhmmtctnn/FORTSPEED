@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.5.0)
+[![Version](https://img.shields.io/badge/version-1.6.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.6.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -215,6 +215,7 @@ cd frontend && npx tsc --noEmit
 | `POST` | `/api/webhook` | FortiGate webhook receiver (speed test + SDWAN) |
 | `WS` | `/ws` | Real-time speed test + unknown-device alerts |
 | `GET/POST/PUT/DELETE` | `/api/cities` | Mission management CRUD |
+| `GET/POST/PUT/DELETE` | `/api/tags` | Tag management CRUD |
 
 ### Filter Query Parameters
 
@@ -269,7 +270,46 @@ services:
 
 ## 📦 Release Notes
 
+### v1.6.0 — 2026-04-17
+
+**Tags System, Login Screen, AdminSettings Redesign & Test Coverage**
+
+#### 🏷️ Tags System — Mission Tagging
+- **`TagsManager` component** — Full CRUD UI for creating and managing mission tags with custom color, emoji icon, and sort order
+- **`/api/tags` endpoints** (`GET / POST / PUT / DELETE`) — Backend REST API for tag management; delete cascade cleans tag IDs from all mission `MissionTags` JSON arrays
+- **`TagSelector` in MissionManager** — Multi-select chip picker embedded in the mission edit form; chips render tag color + icon; unselected tags show muted style
+- **`MissionTags` column** on `Cities` table — JSON array of tag IDs stored per mission; parsed to `tags: number[]` in API responses
+- **`useTags()` hook** — React Query hook for tag list with stale-time caching
+- **`renderTagIcon()` utility** — Resolves tag icon string as emoji or Lucide icon component; reused across TagsManager and TagSelector
+
+#### 🔐 Login Screen — Secure Authentication Gate
+- **`LoginScreen` component** — Full-screen animated NOC-themed login page with canvas-rendered world map, animated city nodes, data packet flows, and glowing country borders
+- **sessionStorage auth flag** — `fortspeed_auth` session key gates access; survives page refresh within the browser session
+- **Configurable password** — Login password read from `localStorage` key `fortspeed_password`; defaults to `admin`
+- **Shake animation** on failed login, loading spinner on submit, show/hide password toggle
+- **Logout button** — Red `LogOut` icon pinned to the bottom of the main sidebar; clears session and returns to login screen
+
+#### ⚙️ AdminSettings — Category Sidebar Redesign
+- **Left-side category navigation** — Four category tabs: Görünüm (Appearance), Harita (Map), Dil (Language), Taglar (Tags)
+- **Tags category** — Inline `TagsManager` panel accessible directly from Admin Settings
+- **Cleaner layout** — Two-panel layout (sidebar nav + content area) replacing the previous flat scroll
+- **`SettingsCategory` type** — Typed enum-like union for active category state
+
+#### ⚡ Performance — WebSocket Query Throttle
+- **30-second WS invalidation throttle** — `lastInvalidateRef` tracks last React Query invalidation timestamp; dashboard/NOC/sparkline queries are refreshed at most once per 30s regardless of incoming WS message rate; eliminates render storms during high-frequency webhook bursts
+
+#### 🧪 Test Suite Updates
+- `webhook-device-validation.test.ts` — Extended with new device tag field expectations and updated payload shapes
+- `noc-summary.test.ts` — Coverage added for NOC summary endpoints with tag-aware city data
+- `feature-manifest.test.ts`, `route-registry.test.ts` — Updated to include `/api/tags` in route registry and feature manifest
+- `response-contracts.test.ts` — City response contract updated to include `tags` array field
+- `reports-filter.test.ts` — Filter combination tests updated for new city schema
+- Frontend `renderTagIcon.test.tsx` — New Vitest test for the `renderTagIcon` utility function
+
+---
+
 ### v1.5.0 — 2026-04-15
+
 
 **i18n Multi-Language, Bulk Mission Import, Terrestrial Type & SDWAN Diagnostics**
 

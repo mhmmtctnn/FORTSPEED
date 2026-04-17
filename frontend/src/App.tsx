@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { ShieldCheck, Map as MapIcon, BarChart3, LayoutDashboard, List, Settings2, Activity, GitBranch } from 'lucide-react';
+import { ShieldCheck, Map as MapIcon, BarChart3, LayoutDashboard, List, Settings2, Activity, GitBranch, LogOut } from 'lucide-react';
 import './index.css';
+import LoginScreen from './components/LoginScreen';
 
 import Dashboard, { DateRange } from './components/Dashboard';
 import Reports from './components/Reports';
@@ -57,7 +58,7 @@ const queryClient = new QueryClient({
   },
 });
 
-function AppContent() {
+function AppContent({ onLogout }: { onLogout: () => void }) {
   const qc = useQueryClient();
   const t = useT();
   const [view, setView] = useState<View>('dashboard');
@@ -121,6 +122,7 @@ function AppContent() {
   // WebSocket
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | null>(null);
+  const lastInvalidateRef = useRef<number>(0);
 
   const connectWS = useCallback(() => {
     ws.current = new WebSocket(WS_URL);
@@ -195,10 +197,14 @@ function AppContent() {
         ]);
       }
 
-      // Webhook gelince rapor sorgularını da yenile → Raporlar sekmesi güncel kalır
-      qc.invalidateQueries({ queryKey: ['dashboardData'] });
-      qc.invalidateQueries({ queryKey: ['nocSummary'] });
-      qc.invalidateQueries({ queryKey: ['sparklines'] });
+      // Rapor sorgularını throttle ile yenile — her WS mesajında değil, en fazla 30sn'de bir
+      const now = Date.now();
+      if (now - lastInvalidateRef.current > 30_000) {
+        lastInvalidateRef.current = now;
+        qc.invalidateQueries({ queryKey: ['dashboardData'] });
+        qc.invalidateQueries({ queryKey: ['nocSummary'] });
+        qc.invalidateQueries({ queryKey: ['sparklines'] });
+      }
     };
     ws.current.onclose = () => { reconnectTimer.current = window.setTimeout(connectWS, 3000); };
   }, [qc]);
@@ -395,6 +401,19 @@ function AppContent() {
             )}
           </button>
         ))}
+
+        {/* Logout — sidebar'ın en altına yapışık */}
+        <div style={{ flex: 1 }} />
+        <button
+          className="sidebar-btn"
+          onClick={onLogout}
+          title="Çıkış Yap"
+          style={{ color: 'rgba(239,68,68,0.7)', marginBottom: 4 }}
+          onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = '#ef4444')}
+          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = 'rgba(239,68,68,0.7)')}
+        >
+          <LogOut size={20} />
+        </button>
       </nav>
 
       {/* Main Content */}
@@ -486,10 +505,23 @@ function AppContent() {
 }
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState<boolean>(
+    () => sessionStorage.getItem('fortspeed_auth') === '1'
+  );
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('fortspeed_auth');
+    setAuthenticated(false);
+  };
+
+  if (!authenticated) {
+    return <LoginScreen onLogin={() => setAuthenticated(true)} />;
+  }
+
   return (
     <LanguageProvider>
       <QueryClientProvider client={queryClient}>
-        <AppContent />
+        <AppContent onLogout={handleLogout} />
       </QueryClientProvider>
     </LanguageProvider>
   );

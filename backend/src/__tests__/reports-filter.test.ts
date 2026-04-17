@@ -21,7 +21,13 @@ jest.mock('ioredis', () =>
 
 const mockQuery = jest.fn();
 const mockPg = { query: mockQuery, connect: jest.fn() };
-const mockRedis = { publish: jest.fn().mockResolvedValue(1), subscribe: jest.fn(), on: jest.fn() };
+const mockRedis = {
+  publish:   jest.fn().mockResolvedValue(1),
+  subscribe: jest.fn(),
+  on:        jest.fn(),
+  get:       jest.fn().mockResolvedValue(null),
+  setex:     jest.fn().mockResolvedValue('OK'),
+};
 
 // ──────────────────────────────────────────────────────────────────────────────
 describe('Rapor Filtresi Testleri', () => {
@@ -212,11 +218,12 @@ describe('Rapor Filtresi Testleri', () => {
     });
 
     const mockUpsertSuccess = () => {
-      // Cities upsert → VpnTypes upsert → SpeedStats insert
+      // Actual flow: WebhookLogs INSERT → Cities SELECT → VpnTypes upsert → SpeedStats insert
       mockQuery
-        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })
-        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] }) // INSERT WebhookLogs
+        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })       // SELECT CityID FROM Cities
+        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })    // INSERT VpnTypes ON CONFLICT
+        .mockResolvedValueOnce({ rows: [] });                    // INSERT SpeedStats
     };
 
     it('FortiGate CLI formatını doğru parse etmeli', async () => {
@@ -292,14 +299,15 @@ describe('Rapor Filtresi Testleri', () => {
       expect(body.download_status).toBe('OK');
     });
 
-    it('Cities upsert sorgusu çağrılmalı (DeviceName = CityName)', async () => {
+    it('Cities SELECT sorgusu çağrılmalı (DeviceName ile arama)', async () => {
       mockUpsertSuccess();
       await app.inject(webhookBody(
         'HAMBURG-BK execute speed-test-ipsec METRO\nclient(recver): down_speed: 77 Mbps'
       ));
-      const firstCall = mockQuery.mock.calls[0];
-      expect(firstCall[0]).toMatch(/INSERT INTO Cities/i);
-      expect(firstCall[1]).toContain('HAMBURG-BK');
+      // call[0] = INSERT WebhookLogs, call[1] = SELECT CityID FROM Cities
+      const cityCall = mockQuery.mock.calls[1];
+      expect(cityCall[0]).toMatch(/SELECT.*CityID.*FROM Cities/i);
+      expect(cityCall[1]).toContain('HAMBURG-BK');
     });
 
     it('VpnTypes upsert sorgusu çağrılmalı', async () => {
@@ -307,8 +315,9 @@ describe('Rapor Filtresi Testleri', () => {
       await app.inject(webhookBody(
         'DORTMUND-BK execute speed-test-ipsec METRO\nclient(recver): down_speed: 55 Mbps'
       ));
-      const secondCall = mockQuery.mock.calls[1];
-      expect(secondCall[0]).toMatch(/INSERT INTO VpnTypes/i);
+      // call[0] = INSERT WebhookLogs, call[1] = SELECT Cities, call[2] = INSERT VpnTypes
+      const vpnCall = mockQuery.mock.calls[2];
+      expect(vpnCall[0]).toMatch(/INSERT INTO VpnTypes/i);
     });
 
     it('DB hatasında 500 döndürmeli', async () => {

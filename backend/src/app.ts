@@ -675,6 +675,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
           c.IsStarlink as is_starlink,
           c.SatelliteType as satellite_type,
           c.TerrestrialType as terrestrial_type,
+          c.MissionTags as mission_tags,
           gsm.DownloadSpeed   as gsm_download,   gsm.UploadSpeed   as gsm_upload,
           gsm.Latency         as gsm_latency,    gsm.DeviceName    as gsm_device,    gsm.MeasuredAt as gsm_test_time,
           metro.DownloadSpeed as metro_download,  metro.UploadSpeed as metro_upload,
@@ -709,7 +710,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     `;
     try {
       const { rows } = await fastify.pg.query(query);
-      return rows;
+      return rows.map((r: any) => ({ ...r, tags: r.mission_tags ? JSON.parse(r.mission_tags) : [], mission_tags: undefined }));
     } catch (err) {
       fastify.log.error(err);
       return reply.status(500).send({ error: 'DB Error' });
@@ -1102,18 +1103,84 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }
   });
 
-  // 12. Cities CRUD
+  // 12. Tags CRUD
+  fastify.get('/api/tags', async (_request, reply) => {
+    try {
+      const { rows } = await fastify.pg.query('SELECT ID as id, Name as name, Color as color, Icon as icon, SortOrder as sort_order FROM Tags ORDER BY SortOrder ASC, ID ASC');
+      return rows;
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'DB Error' });
+    }
+  });
+
+  fastify.post('/api/tags', async (request, reply) => {
+    const { name, color, icon, sort_order } = request.body as any;
+    if (!name?.trim()) return reply.status(400).send({ error: 'name is required' });
+    try {
+      const { rows } = await fastify.pg.query(
+        'INSERT INTO Tags (Name, Color, Icon, SortOrder) VALUES ($1,$2,$3,$4) RETURNING ID as id, Name as name, Color as color, Icon as icon, SortOrder as sort_order',
+        [name.trim(), color || '#38bdf8', icon || '🏷️', sort_order ?? 0]
+      );
+      return reply.status(201).send(rows[0]);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'DB Error' });
+    }
+  });
+
+  fastify.put('/api/tags/:id', async (request, reply) => {
+    const { id } = request.params as any;
+    const { name, color, icon, sort_order } = request.body as any;
+    if (!name?.trim()) return reply.status(400).send({ error: 'name is required' });
+    try {
+      const { rows } = await fastify.pg.query(
+        'UPDATE Tags SET Name=$1, Color=$2, Icon=$3, SortOrder=$4 WHERE ID=$5 RETURNING ID as id, Name as name, Color as color, Icon as icon, SortOrder as sort_order',
+        [name.trim(), color || '#38bdf8', icon || '🏷️', sort_order ?? 0, id]
+      );
+      if (!rows.length) return reply.status(404).send({ error: 'Not found' });
+      return rows[0];
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'DB Error' });
+    }
+  });
+
+  fastify.delete('/api/tags/:id', async (request, reply) => {
+    const { id } = request.params as any;
+    try {
+      // Tag ID'sini tüm şehirlerin MissionTags alanından temizle
+      const { rows: cities } = await fastify.pg.query('SELECT CityID, MissionTags FROM Cities WHERE MissionTags IS NOT NULL');
+      for (const city of cities) {
+        try {
+          const tags: number[] = JSON.parse(city.MissionTags || '[]');
+          const filtered = tags.filter((t: number) => t !== Number(id));
+          await fastify.pg.query('UPDATE Cities SET MissionTags=$1 WHERE CityID=$2',
+            [filtered.length ? JSON.stringify(filtered) : null, city.CityID]
+          );
+        } catch {}
+      }
+      await fastify.pg.query('DELETE FROM Tags WHERE ID=$1', [id]);
+      return reply.status(204).send();
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'DB Error' });
+    }
+  });
+
+  // 13. Cities CRUD
   fastify.get('/api/cities', async (_request, reply) => {
     // CityID'ye göre sıralı dönür — Misyon Yönetiminde ID sıralı görünür
-    const withDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type FROM Cities ORDER BY CityID ASC';
-    const withoutDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type, NULL as terrestrial_type FROM Cities ORDER BY CityID ASC';
+    const withDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type, MissionTags as mission_tags FROM Cities ORDER BY CityID ASC';
+    const withoutDeviceName = 'SELECT CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type, NULL as terrestrial_type, NULL as mission_tags FROM Cities ORDER BY CityID ASC';
+    const parseTags = (r: any) => ({ ...r, tags: r.mission_tags ? JSON.parse(r.mission_tags) : [], mission_tags: undefined });
     try {
       const { rows } = await fastify.pg.query(withDeviceName);
-      return rows;
+      return rows.map(parseTags);
     } catch {
       try {
         const { rows } = await fastify.pg.query(withoutDeviceName);
-        return rows;
+        return rows.map(parseTags);
       } catch (err2) {
         fastify.log.error(err2);
         return reply.status(500).send({ error: 'DB Error' });
@@ -1122,21 +1189,22 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   fastify.post('/api/cities', async (request, reply) => {
-    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type, terrestrial_type } = request.body as any;
+    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type, terrestrial_type, tags } = request.body as any;
     if (!name) return reply.status(400).send({ error: 'name is required' });
     const satType = satellite_type || null;
     const terrType = terrestrial_type || null;
     const isStarlinkVal = satType === 'starlink' ? true : (is_starlink ?? false);
+    const missionTags = Array.isArray(tags) && tags.length ? JSON.stringify(tags) : null;
     try {
       const { rows } = await fastify.pg.query(
-        'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM, DeviceName, IsStarlink, SatelliteType, TerrestrialType) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type',
-        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType, terrType]
+        'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM, DeviceName, IsStarlink, SatelliteType, TerrestrialType, MissionTags) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type, MissionTags as mission_tags',
+        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType, terrType, missionTags]
       );
       // Redis cache'i temizle — yeni şehir webhook'ta hemen eşleşsin
       const cacheKeys = [`cityid:${name.toUpperCase()}`];
       if (device_name) cacheKeys.push(`cityid:${device_name.toUpperCase()}`);
       await Promise.all(cacheKeys.map(k => redis.del(k)));
-      return reply.status(201).send(rows[0]);
+      return reply.status(201).send({ ...rows[0], tags: rows[0].mission_tags ? JSON.parse(rows[0].mission_tags) : [], mission_tags: undefined });
     } catch {
       // DeviceName/IsStarlink kolonu henüz yoksa onsuz ekle
       try {
@@ -1144,7 +1212,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
           'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink',
           [name, continent, country, city, type, lat, lon]
         );
-        return reply.status(201).send(rows[0]);
+        return reply.status(201).send({ ...rows[0], tags: [] });
       } catch (err2) {
         fastify.log.error(err2);
         return reply.status(500).send({ error: 'DB Error' });
@@ -1195,30 +1263,29 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   fastify.put('/api/cities/:id', async (request, reply) => {
     const { id } = request.params as any;
-    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type, terrestrial_type } = request.body as any;
+    const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type, terrestrial_type, tags } = request.body as any;
     const satType = satellite_type || null;
     const terrType = terrestrial_type || null;
     const isStarlinkVal = satType === 'starlink' ? true : (is_starlink ?? false);
+    const missionTags = Array.isArray(tags) && tags.length ? JSON.stringify(tags) : null;
     try {
       const { rows } = await fastify.pg.query(
-        'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7, DeviceName=$8, IsStarlink=$9, SatelliteType=$10, TerrestrialType=$11 WHERE CityID=$12 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type',
-        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType, terrType, id]
+        'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7, DeviceName=$8, IsStarlink=$9, SatelliteType=$10, TerrestrialType=$11, MissionTags=$12 WHERE CityID=$13 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, DeviceName as device_name, IsStarlink as is_starlink, SatelliteType as satellite_type, TerrestrialType as terrestrial_type, MissionTags as mission_tags',
+        [name, continent, country, city, type, lat, lon, device_name || null, isStarlinkVal, satType, terrType, missionTags, id]
       );
       if (!rows.length) return reply.status(404).send({ error: 'Not found' });
-      // Redis cache'i temizle — değişen cihaz adı bir sonraki webhook'ta geçerli olsun
       const cacheKeys = [`cityid:${name.toUpperCase()}`];
       if (device_name) cacheKeys.push(`cityid:${device_name.toUpperCase()}`);
       await Promise.all(cacheKeys.map(k => redis.del(k)));
-      return rows[0];
+      return { ...rows[0], tags: rows[0].mission_tags ? JSON.parse(rows[0].mission_tags) : [], mission_tags: undefined };
     } catch {
-      // DeviceName/IsStarlink kolonu henüz yoksa onsuz güncelle
       try {
         const { rows } = await fastify.pg.query(
           'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7 WHERE CityID=$8 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type, NULL as terrestrial_type',
           [name, continent, country, city, type, lat, lon, id]
         );
         if (!rows.length) return reply.status(404).send({ error: 'Not found' });
-        return rows[0];
+        return { ...rows[0], tags: [] };
       } catch (err2) {
         fastify.log.error(err2);
         return reply.status(500).send({ error: 'DB Error' });
@@ -1394,7 +1461,20 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
           ON Cities (UPPER(DeviceName))
           WHERE DeviceName IS NOT NULL AND DeviceName <> '';
       `);
-      fastify.log.info('Migration OK: Cities.DeviceName + SatelliteType kolonları hazır.');
+      // Tags tablosu ve Cities.MissionTags kolonu
+      await fastify.pg.query(`
+        CREATE TABLE IF NOT EXISTS Tags (
+          ID        SERIAL PRIMARY KEY,
+          Name      VARCHAR(100) NOT NULL,
+          Color     VARCHAR(20)  NOT NULL DEFAULT '#38bdf8',
+          Icon      VARCHAR(20)  NOT NULL DEFAULT '🏷️',
+          SortOrder INT          NOT NULL DEFAULT 0
+        );
+      `);
+      await fastify.pg.query(`
+        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS MissionTags TEXT DEFAULT NULL;
+      `);
+      fastify.log.info('Migration OK: Cities.DeviceName + SatelliteType + Tags kolonları hazır.');
     } catch (err) {
       fastify.log.error(err, 'Migration failed: Cities.DeviceName');
     }

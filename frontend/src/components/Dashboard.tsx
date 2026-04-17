@@ -1,6 +1,16 @@
 import { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Globe, TrendingUp, Wifi, Activity, Clock, MapPin, Zap, Calendar, X } from 'lucide-react';
+
+// KPI icon'ları bileşen dışında sabit — her render'da yeni JSX oluşturulmaz
+const KPI_ICONS = {
+  globe:    <Globe size={20} />,
+  mapPin:   <MapPin size={20} />,
+  activity: <Activity size={20} />,
+  trend:    <TrendingUp size={20} />,
+  zap:      <Zap size={20} />,
+  clock:    <Clock size={20} />,
+};
 import { Mission, ActivityEntry, fmt, getBestDownload, getBestUpload } from '../types';
 import { useT } from '../i18n';
 
@@ -53,7 +63,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
   const t = useT();
   const [range, setRange] = useState<DateRange>({ startDate: daysAgo(30), endDate: today() });
   const [topMetric, setTopMetric] = useState<'download'|'upload'>('download');
-  const validationErr = validateRange(range);
+  const validationErr = useMemo(() => validateRange(range), [range]);
   const isValid = validationErr === '';
 
   const handleApply = () => {
@@ -67,12 +77,12 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
     .slice(0, 10), [missions, topMetric]);
 
   const kpis = useMemo(() => [
-    { label: t('total_missions'), value: String(summary?.total_missions ?? missions.length), icon: <Globe size={20}/>, color: 'accent', unit: '' },
-    { label: t('missions_with_data'), value: String(summary?.missions_with_data ?? '–'), icon: <MapPin size={20}/>, color: 'green', unit: '' },
-    { label: t('total_tests'), value: String(Number(summary?.total_tests ?? 0)), icon: <Activity size={20}/>, color: 'blue', unit: '' },
-    { label: t('avg_download'), value: fmt(summary?.global_avg_download), icon: <TrendingUp size={20}/>, color: 'green', unit: 'Mbps' },
-    { label: t('avg_upload'), value: fmt(summary?.global_avg_upload), icon: <Zap size={20}/>, color: 'blue', unit: 'Mbps' },
-    { label: t('avg_latency'), value: summary?.global_avg_latency ? fmt(summary.global_avg_latency, 0) : '—', icon: <Clock size={20}/>, color: 'amber', unit: summary?.global_avg_latency ? 'ms' : '' },
+    { label: t('total_missions'),    value: String(summary?.total_missions ?? missions.length), icon: KPI_ICONS.globe,    color: 'accent', unit: '' },
+    { label: t('missions_with_data'),value: String(summary?.missions_with_data ?? '–'),         icon: KPI_ICONS.mapPin,  color: 'green',  unit: '' },
+    { label: t('total_tests'),       value: String(Number(summary?.total_tests ?? 0)),           icon: KPI_ICONS.activity,color: 'blue',   unit: '' },
+    { label: t('avg_download'),      value: fmt(summary?.global_avg_download),                   icon: KPI_ICONS.trend,   color: 'green',  unit: 'Mbps' },
+    { label: t('avg_upload'),        value: fmt(summary?.global_avg_upload),                     icon: KPI_ICONS.zap,     color: 'blue',   unit: 'Mbps' },
+    { label: t('avg_latency'),       value: summary?.global_avg_latency ? fmt(summary.global_avg_latency, 0) : '—', icon: KPI_ICONS.clock, color: 'amber', unit: summary?.global_avg_latency ? 'ms' : '' },
   ], [summary, missions.length, t]);
 
   const chartData = useMemo(() => continentReports
@@ -89,6 +99,8 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px', background: 'var(--bg-base)' }} className="fade-in">
+      {/* Marquee CSS — bileşen mount'unda bir kez render edilir, activity feed güncellemelerinden etkilenmez */}
+      <style>{`@keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }`}</style>
       {/* Header */}
       <div style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -124,9 +136,6 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
                 fontSize: '0.8rem',
                 color: 'var(--text-muted)'
               }}>
-                <style>{`
-                  @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-                `}</style>
                 {activityFeed.slice(0, 15).map((log) => (
                   <span key={log.id} style={{ marginRight: '40px' }}>
                     <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{log.time}</span>

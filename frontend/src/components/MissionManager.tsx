@@ -1,14 +1,16 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n';
-import { List, Plus, Pencil, Trash2, Check, X, MapPin, Satellite, Upload, Download, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
-import { CityRow, SatelliteType, TerrestrialType } from '../types';
+import { List, Plus, Pencil, Trash2, Check, X, MapPin, Tag, Upload, Download, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
+import { CityRow, MissionTag } from '../types';
+import { useTags } from '../hooks/useQueries';
+import { renderTagIcon } from './TagsManager';
 
 // ── CSV şablon ──────────────────────────────────────────────────────────────
-const CSV_HEADERS = ['Misyon Adı', 'Kıta', 'Ülke', 'Şehir/İl', 'Tür', 'FortiGate Cihaz Adı', 'Enlem', 'Boylam', 'Uydu Tipi', 'Karasal Sağlayıcı'];
+const CSV_HEADERS = ['Misyon Adı', 'Kıta', 'Ülke', 'Şehir/İl', 'Tür', 'FortiGate Cihaz Adı', 'Enlem', 'Boylam'];
 const CSV_EXAMPLE_ROWS = [
-  ['PARIS_FW',   'AVRUPA',         'Fransa',  'Paris',       'BE', 'PARIS_FIREWALL',  '48.8566',  '2.3522', '',         ''],
-  ['ANKARA_FW',  'ASYA',           'Türkiye', 'Ankara',      'BE', '',                '39.9334', '32.8597', 'starlink', ''],
-  ['MEKSIKA_FW', 'KUZEY AMERICA',  'Meksika', 'Mexico City', 'BE', 'MEKSIKA_FIREWALL','19.4326', '-99.133', '',         'tti'],
+  ['PARIS_FW',   'AVRUPA',        'Fransa',  'Paris',       'BE', 'PARIS_FIREWALL',   '48.8566',  '2.3522'],
+  ['ANKARA_FW',  'ASYA',          'Türkiye', 'Ankara',      'BE', '',                 '39.9334', '32.8597'],
+  ['MEKSIKA_FW', 'KUZEY AMERICA', 'Meksika', 'Mexico City', 'BE', 'MEKSIKA_FIREWALL', '19.4326', '-99.133'],
 ];
 
 function downloadTemplateCsv() {
@@ -24,18 +26,14 @@ function downloadTemplateCsv() {
 interface ParsedRow {
   name: string; continent: string; country: string; city: string; type: string;
   device_name: string; lat: number | null; lon: number | null;
-  satellite_type: string | null; terrestrial_type: string | null; _line: number; _error?: string;
+  _line: number; _error?: string;
 }
 
 function parseCsvText(text: string): ParsedRow[] {
-  // BOM temizle
   const clean = text.replace(/^\uFEFF/, '').trim();
   const lines = clean.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return [];
-
-  // Ayraç tespiti: ilk satırda ; varsa ;, yoksa ,
   const sep = lines[0].includes(';') ? ';' : ',';
-
   const splitLine = (line: string): string[] => {
     const result: string[] = [];
     let cur = '', inQ = false;
@@ -48,8 +46,6 @@ function parseCsvText(text: string): ParsedRow[] {
     result.push(cur.trim());
     return result;
   };
-
-  // İlk satır başlık — atla
   const dataLines = lines.slice(1);
   return dataLines.map((line, idx) => {
     const cols = splitLine(line);
@@ -58,55 +54,56 @@ function parseCsvText(text: string): ParsedRow[] {
     const latStr = get(6); const lonStr = get(7);
     const lat = latStr ? Number(latStr) : null;
     const lon = lonStr ? Number(lonStr) : null;
-    const sat = get(8).toLowerCase();
-    const satellite_type = (sat === 'starlink' || sat === 'turksat') ? sat : null;
-    const terr = get(9).toLowerCase();
-    const terrestrial_type = terr === 'tti' ? 'tti' : null;
     let _error: string | undefined;
     if (!name) _error = 'Misyon adı boş';
     else if (latStr && isNaN(lat!)) _error = 'Enlem geçersiz sayı';
     else if (lonStr && isNaN(lon!)) _error = 'Boylam geçersiz sayı';
     return { name, continent: get(1), country: get(2), city: get(3), type: get(4),
-      device_name: get(5), lat, lon, satellite_type, terrestrial_type, _line: idx + 2, _error };
+      device_name: get(5), lat, lon, _line: idx + 2, _error };
   });
 }
 
-const SAT_OPTIONS: { value: SatelliteType | null; label: string; color: string; bg: string; icon: React.ReactNode }[] = [
-  { value: null,       label: 'Yok',     color: 'var(--text-muted)', bg: 'var(--bg-elevated)', icon: null },
-  {
-    value: 'starlink', label: 'Starlink', color: '#06b6d4', bg: 'rgba(6,182,212,0.15)',
-    icon: (
-      <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="3.5" fill="currentColor"/>
-        <ellipse cx="10" cy="10" rx="9" ry="4" stroke="currentColor" strokeWidth="1.8" fill="none"/>
-        <ellipse cx="10" cy="10" rx="4" ry="9" stroke="currentColor" strokeWidth="1.8" fill="none"/>
-      </svg>
-    ),
-  },
-  {
-    value: 'turksat', label: 'Türksat', color: '#dc2626', bg: 'rgba(220,38,38,0.15)',
-    icon: (
-      <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
-        <path d="M12.6,4.75 A7,7,0,1,0,12.6,15.25 A5.5,5.5,0,0,1,12.6,4.75 Z" fill="currentColor"/>
-        <circle cx="17" cy="8" r="2" fill="currentColor"/>
-      </svg>
-    ),
-  },
-];
-
-const TERR_OPTIONS: { value: TerrestrialType | null; label: string; color: string; bg: string; icon: React.ReactNode }[] = [
-  { value: null,  label: 'Yok', color: 'var(--text-muted)', bg: 'var(--bg-elevated)', icon: null },
-  {
-    value: 'tti', label: 'TTI', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',
-    icon: (
-      <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
-        <rect x="2" y="9" width="16" height="2" fill="currentColor" rx="1"/>
-        <rect x="9" y="2" width="2" height="7" fill="currentColor" rx="1"/>
-        <circle cx="10" cy="15" r="3" stroke="currentColor" strokeWidth="1.8" fill="none"/>
-      </svg>
-    ),
-  },
-];
+// ── Tag çoklu seçici ────────────────────────────────────────────────────────
+function TagSelector({ tags, selected, onChange }: {
+  tags: MissionTag[];
+  selected: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  if (tags.length === 0) {
+    return (
+      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+        Henüz tag yok — Ayarlar &gt; Taglar kısmından ekleyebilirsiniz.
+      </span>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {tags.map(tag => {
+        const active = selected.includes(tag.id);
+        return (
+          <button
+            key={tag.id}
+            type="button"
+            onClick={() => onChange(active ? selected.filter(id => id !== tag.id) : [...selected, tag.id])}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '5px 11px', borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer', fontSize: '0.78rem',
+              background: active ? `${tag.color}22` : 'var(--bg-elevated)',
+              border: `1px solid ${active ? tag.color : 'var(--border)'}`,
+              color: active ? tag.color : 'var(--text-muted)',
+              fontWeight: active ? 700 : 400,
+              transition: 'all 0.15s',
+            }}
+          >
+            {renderTagIcon(tag.icon, 16)}
+            {tag.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 interface PendingDevice {
   id: string;
@@ -124,12 +121,13 @@ interface Props {
   onDismissPending?: (deviceName: string) => void;
 }
 
-const emptyForm: Omit<CityRow, 'id'> = { name: '', continent: '', country: '', city: '', type: '', lat: null, lon: null, device_name: '', is_starlink: false, satellite_type: null, terrestrial_type: null };
+const emptyForm: Omit<CityRow, 'id'> = { name: '', continent: '', country: '', city: '', type: '', lat: null, lon: null, device_name: '', is_starlink: false, satellite_type: null, terrestrial_type: null, tags: [] };
 
 const FIELD_LABELS: Record<string, string> = { name: 'Misyon Adı *', continent: 'Kıta', country: 'Ülke', city: 'Şehir/İl', type: 'Tür (BE, DT...)', device_name: 'FortiGate Cihaz Adı' };
 
 export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pendingDevices = [], onDismissPending }: Props) {
   const t = useT();
+  const { data: allTags = [] } = useTags();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -370,7 +368,7 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
                     <th style={{ width: 32 }}>#</th>
                     <th>Misyon Adı</th><th>Kıta</th><th>Ülke</th><th>Şehir</th><th>Tür</th>
                     <th>Cihaz Adı</th><th className="right">Enlem</th><th className="right">Boylam</th>
-                    <th>Uydu</th><th>Karasal</th><th style={{ width: 60 }}>Durum</th>
+                    <th style={{ width: 60 }}>Durum</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -385,8 +383,6 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
                       <td style={{ fontFamily: 'monospace', fontSize: '0.72rem' }}>{r.device_name || '–'}</td>
                       <td className="right" style={{ fontFamily: 'monospace' }}>{r.lat ?? '–'}</td>
                       <td className="right" style={{ fontFamily: 'monospace' }}>{r.lon ?? '–'}</td>
-                      <td>{r.satellite_type ?? '–'}</td>
-                      <td>{r.terrestrial_type ?? '–'}</td>
                       <td style={{ textAlign: 'center' }}>
                         {r._error
                           ? <span title={r._error}><AlertTriangle size={14} color="#ef4444" /></span>
@@ -489,50 +485,16 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
               FortiGate'in webhook'ta gönderdiği cihaz adı burada belirtilenden farklıysa buraya girin. Örn: misyon adı "Port of Spain", cihaz adı "PORT_OF_SPAIN_FW".
             </p>
           </div>
-          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}><Satellite size={13} style={{ verticalAlign: 'middle', marginRight: 4 }}/>Uydu Tipi:</span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {SAT_OPTIONS.map(opt => {
-                const active = (form.satellite_type ?? null) === opt.value;
-                return (
-                  <button key={String(opt.value)} type="button"
-                    onClick={() => setForm({ ...form, satellite_type: opt.value, is_starlink: opt.value === 'starlink' })}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '5px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.78rem',
-                      background: active ? opt.bg : 'var(--bg-elevated)',
-                      border: `1px solid ${active ? opt.color : 'var(--border)'}`,
-                      color: active ? opt.color : 'var(--text-muted)',
-                      fontWeight: active ? 700 : 400, transition: 'all 0.15s',
-                    }}
-                  >{opt.icon}{opt.label}</button>
-                );
-              })}
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Tag size={13} color="var(--accent)" />
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Taglar</span>
             </div>
-          </div>
-          <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}>
-              <svg width="13" height="13" viewBox="0 0 20 20" fill="none" style={{ verticalAlign: 'middle', marginRight: 4 }}><rect x="2" y="9" width="16" height="2" fill="currentColor" rx="1"/><rect x="9" y="2" width="2" height="7" fill="currentColor" rx="1"/><circle cx="10" cy="15" r="3" stroke="currentColor" strokeWidth="1.8" fill="none"/></svg>
-              Karasal Sağlayıcı:
-            </span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {TERR_OPTIONS.map(opt => {
-                const active = (form.terrestrial_type ?? null) === opt.value;
-                return (
-                  <button key={String(opt.value)} type="button"
-                    onClick={() => setForm({ ...form, terrestrial_type: opt.value })}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '5px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.78rem',
-                      background: active ? opt.bg : 'var(--bg-elevated)',
-                      border: `1px solid ${active ? opt.color : 'var(--border)'}`,
-                      color: active ? opt.color : 'var(--text-muted)',
-                      fontWeight: active ? 700 : 400, transition: 'all 0.15s',
-                    }}
-                  >{opt.icon}{opt.label}</button>
-                );
-              })}
-            </div>
+            <TagSelector
+              tags={allTags}
+              selected={form.tags ?? []}
+              onChange={ids => setForm({ ...form, tags: ids })}
+            />
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="btn btn-success" onClick={handleAdd}><Check size={13}/> {t('save')}</button>
@@ -556,15 +518,14 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
               </th>
               <th>{t('continent')}</th><th>{t('country')}</th><th>Şehir/İl</th><th>{t('city_type')}</th>
               <th>{t('device_name')}</th>
-              <th style={{ textAlign: 'center' }}>Uydu</th>
-              <th style={{ textAlign: 'center' }}>Karasal</th>
+              <th style={{ textAlign: 'center' }}>Taglar</th>
               <th className="right">{t('latitude')}</th><th className="right">{t('longitude')}</th>
               <th style={{ textAlign: 'center' }}>{t('edit')}</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={11} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
+              <tr><td colSpan={10} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
                 <MapPin size={32} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.3 }}/>
                 {search ? 'Arama sonucu bulunamadı' : 'Henüz misyon yok'}
               </td></tr>
@@ -585,45 +546,12 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
                     value={editing.device_name ?? ''}
                     onChange={e => setEditing({ ...editing, device_name: e.target.value })}/>
                 </td>
-                <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                  <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
-                    {SAT_OPTIONS.map(opt => {
-                      const active = (editing.satellite_type ?? null) === opt.value;
-                      return (
-                        <button key={String(opt.value)} type="button"
-                          onClick={e => { e.stopPropagation(); setEditing({ ...editing, satellite_type: opt.value, is_starlink: opt.value === 'starlink' }); }}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 3,
-                            padding: '3px 7px', borderRadius: 4, cursor: 'pointer', fontSize: '0.65rem',
-                            background: active ? opt.bg : 'var(--bg-elevated)',
-                            border: `1px solid ${active ? opt.color : 'var(--border)'}`,
-                            color: active ? opt.color : 'var(--text-muted)',
-                            fontWeight: active ? 700 : 400, transition: 'all 0.12s',
-                          }}
-                        >{opt.icon}{opt.value === null ? '–' : opt.label}</button>
-                      );
-                    })}
-                  </div>
-                </td>
-                <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                  <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
-                    {TERR_OPTIONS.map(opt => {
-                      const active = (editing.terrestrial_type ?? null) === opt.value;
-                      return (
-                        <button key={String(opt.value)} type="button"
-                          onClick={e => { e.stopPropagation(); setEditing({ ...editing, terrestrial_type: opt.value }); }}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 3,
-                            padding: '3px 7px', borderRadius: 4, cursor: 'pointer', fontSize: '0.65rem',
-                            background: active ? opt.bg : 'var(--bg-elevated)',
-                            border: `1px solid ${active ? opt.color : 'var(--border)'}`,
-                            color: active ? opt.color : 'var(--text-muted)',
-                            fontWeight: active ? 700 : 400, transition: 'all 0.12s',
-                          }}
-                        >{opt.icon}{opt.value === null ? '–' : opt.label}</button>
-                      );
-                    })}
-                  </div>
+                <td style={{ padding: '4px 8px', maxWidth: 200 }}>
+                  <TagSelector
+                    tags={allTags}
+                    selected={editing.tags ?? []}
+                    onChange={ids => setEditing({ ...editing, tags: ids })}
+                  />
                 </td>
                 <td style={{ padding: '6px 8px' }}>
                   <input type="number" step="any" className="form-control" style={{ width: 90, fontSize: '0.78rem', padding: '5px 8px' }}
@@ -654,26 +582,25 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
                     ? <span style={{ color: 'var(--green)', fontWeight: 600 }}>{c.device_name}</span>
                     : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>= misyon adı</span>}
                 </td>
-                <td style={{ textAlign: 'center' }}>
-                  {(() => {
-                    const sat = SAT_OPTIONS.find(o => o.value === (c.satellite_type ?? null));
-                    return sat?.value
-                      ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', fontWeight: 700, color: sat.color, background: sat.bg, border: `1px solid ${sat.color}44`, borderRadius: 4, padding: '2px 6px' }}>{sat.icon} {sat.label}</span>
-                      : <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>–</span>;
-                  })()}
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  {(() => {
-                    const terr = TERR_OPTIONS.find(o => o.value === (c.terrestrial_type ?? null));
-                    return terr?.value
-                      ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', fontWeight: 700, color: terr.color, background: terr.bg, border: `1px solid ${terr.color}44`, borderRadius: 4, padding: '2px 6px' }}>{terr.icon} {terr.label}</span>
-                      : <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>–</span>;
-                  })()}
+                <td style={{ maxWidth: 180 }}>
+                  {(c.tags ?? []).length > 0
+                    ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        {(c.tags ?? []).map(id => {
+                          const tag = allTags.find(t => t.id === id);
+                          if (!tag) return null;
+                          return (
+                            <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.62rem', fontWeight: 700, color: tag.color, background: `${tag.color}22`, border: `1px solid ${tag.color}55`, borderRadius: 4, padding: '2px 6px' }}>
+                              {renderTagIcon(tag.icon, 13)}{tag.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    : <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>–</span>}
                 </td>
                 <td className="right" style={{ fontFamily: 'monospace', color: (!c.lat || !c.lon) ? 'var(--amber)' : 'var(--text-muted)', fontSize: '0.75rem' }}>{c.lat != null ? Number(c.lat).toFixed(5) : '—'}</td>
                 <td className="right" style={{ fontFamily: 'monospace', color: (!c.lat || !c.lon) ? 'var(--amber)' : 'var(--text-muted)', fontSize: '0.75rem' }}>{c.lon != null ? Number(c.lon).toFixed(5) : '—'}</td>
                 <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                  <button className="btn-icon btn" style={{ marginRight: 4 }} onClick={() => { setEditing({ ...c, is_starlink: c.is_starlink ?? false, satellite_type: c.satellite_type ?? null, terrestrial_type: c.terrestrial_type ?? null }); setShowAdd(false); setError(''); }}><Pencil size={13}/></button>
+                  <button className="btn-icon btn" style={{ marginRight: 4 }} onClick={() => { setEditing({ ...c, is_starlink: c.is_starlink ?? false, satellite_type: c.satellite_type ?? null, terrestrial_type: c.terrestrial_type ?? null, tags: c.tags ?? [] }); setShowAdd(false); setError(''); }}><Pencil size={13}/></button>
                   <button className="btn btn-danger btn-icon" onClick={() => handleDelete(c.id, c.name)}><Trash2 size={13}/></button>
                 </td>
               </tr>

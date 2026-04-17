@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { API_BASE, Mission, CityRow, FilterOptions, Filters, SdwanRow } from '../types';
+import { API_BASE, Mission, CityRow, FilterOptions, Filters, SdwanRow, MissionTag } from '../types';
 
 // Dashboard için tarih aralığı
 export interface DateRange {
@@ -32,6 +32,7 @@ export const useFilterOptions = () =>
 export const useDashboardData = (range?: DateRange) =>
   useQuery({
     queryKey: ['dashboardData', range],
+    staleTime: 30_000,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (range?.startDate) params.append('startDate', range.startDate);
@@ -137,3 +138,38 @@ export const useSdwan = () =>
     staleTime: 15_000,
     refetchInterval: 15_000,
   });
+
+// 4. Tags
+export const useTags = () =>
+  useQuery<MissionTag[]>({
+    queryKey: ['tags'],
+    queryFn: async () => (await axios.get(`${API_BASE}/tags`)).data,
+    staleTime: 5 * 60_000,
+  });
+
+export const useTagMutations = () => {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tags'] });
+
+  const addTag = useMutation({
+    mutationFn: async (tag: Omit<MissionTag, 'id'>) => (await axios.post(`${API_BASE}/tags`, tag)).data,
+    onSuccess: invalidate,
+  });
+
+  const updateTag = useMutation({
+    mutationFn: async ({ id, ...tag }: MissionTag) => (await axios.put(`${API_BASE}/tags/${id}`, tag)).data,
+    onSuccess: invalidate,
+  });
+
+  const deleteTag = useMutation({
+    mutationFn: async (id: number) => axios.delete(`${API_BASE}/tags/${id}`),
+    onSuccess: () => {
+      invalidate();
+      // City/mission cache'ini de temizle — tag silinince referanslar geçersiz
+      queryClient.invalidateQueries({ queryKey: ['cities'] });
+      queryClient.invalidateQueries({ queryKey: ['missions'] });
+    },
+  });
+
+  return { addTag, updateTag, deleteTag };
+};

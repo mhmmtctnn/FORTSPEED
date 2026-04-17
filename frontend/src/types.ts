@@ -4,6 +4,14 @@ export type VpnTab = 'GSM' | 'METRO' | 'HUB';
 export type SatelliteType = 'starlink' | 'turksat';
 export type TerrestrialType = 'tti';
 
+export interface MissionTag {
+  id: number;
+  name: string;
+  color: string; // hex renk kodu
+  icon: string;  // emoji veya kısa metin
+  sort_order?: number;
+}
+
 export interface Mission {
   id: number;
   name: string;
@@ -30,6 +38,7 @@ export interface Mission {
   is_starlink?: boolean;
   satellite_type?: SatelliteType | null;
   terrestrial_type?: TerrestrialType | null;
+  tags?: number[];
 }
 
 export interface StatPoint {
@@ -71,6 +80,7 @@ export interface CityRow {
   is_starlink?: boolean;
   satellite_type?: SatelliteType | null;
   terrestrial_type?: TerrestrialType | null;
+  tags?: number[];
 }
 
 export interface SdwanMember {

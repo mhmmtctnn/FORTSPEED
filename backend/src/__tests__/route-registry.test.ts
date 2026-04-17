@@ -58,6 +58,16 @@ const ROUTE_MANIFEST: [string, string, string][] = [
   ['POST',   '/api/webhook',                          'FortiGate raw webhook'],
   ['GET',    '/api/webhook/stats',                    'Webhook istatistikleri'],
   ['POST',   '/webhook/speedtest',                    'Legacy JSON webhook'],
+
+  // Tags (Dynamic Tag System)
+  ['GET',    '/api/tags',                             'Tag listesi'],
+  ['POST',   '/api/tags',                             'Tag oluştur'],
+  ['PUT',    '/api/tags/1',                           'Tag güncelle'],
+  ['DELETE', '/api/tags/1',                           'Tag sil'],
+
+  // Activity & Logs
+  ['GET',    '/api/activity/recent',                  'Son aktiviteler'],
+  ['GET',    '/api/logs/system',                      'Sistem logları'],
 ];
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -81,7 +91,7 @@ describe('Route Registry — Tüm Endpoint Doğrulaması', () => {
   });
 
   it(`manifest ${ROUTE_MANIFEST.length} endpoint içermeli`, () => {
-    expect(ROUTE_MANIFEST.length).toBeGreaterThanOrEqual(22);
+    expect(ROUTE_MANIFEST.length).toBeGreaterThanOrEqual(28);
   });
 
   // Her endpoint için ayrı bir test oluştur

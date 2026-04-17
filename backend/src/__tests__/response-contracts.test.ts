@@ -20,7 +20,14 @@ jest.mock('ioredis', () =>
 
 const mockQuery = jest.fn();
 const mockPg = { query: mockQuery, connect: jest.fn() };
-const mockRedis = { publish: jest.fn().mockResolvedValue(1), subscribe: jest.fn(), on: jest.fn() };
+const mockRedis = {
+  publish:   jest.fn().mockResolvedValue(1),
+  subscribe: jest.fn(),
+  on:        jest.fn(),
+  get:       jest.fn().mockResolvedValue(null),
+  setex:     jest.fn().mockResolvedValue('OK'),
+  del:       jest.fn().mockResolvedValue(1),
+};
 
 describe('Response Contracts — API Şema Doğrulaması', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
@@ -101,12 +108,12 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
       }
     });
 
-    it('SQL LATERAL JOIN yapısını korumalı (GSM=2, METRO=1)', async () => {
+    it('SQL LATERAL JOIN yapısını korumalı (VpnTypeName ile GSM/METRO/HUB)', async () => {
       mockQuery.mockResolvedValueOnce({ rows: [] });
       await app.inject({ method: 'GET', url: '/api/missions' });
       const [sql] = mockQuery.mock.calls[0];
-      expect(sql).toMatch(/VpnTypeID\s*=\s*2/); // GSM
-      expect(sql).toMatch(/VpnTypeID\s*=\s*1/); // METRO
+      expect(sql).toMatch(/VpnTypeName.*GSM/i);   // VpnTypeID yerine VpnTypeName join
+      expect(sql).toMatch(/VpnTypeName.*METRO/i);
       expect(sql).toMatch(/LATERAL/i);
     });
   });
@@ -176,11 +183,13 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
     const REQUIRED_FIELDS = ['top_gsm_dl', 'top_gsm_ul', 'top_metro_dl', 'top_metro_ul', 'bottlenecks', 'top_continents'];
 
     it('response tüm NOC summary alanlarını içermeli', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [
-          { id: 1, name: 'BERLIN-BK', country: 'ALMANYA', continent: 'AVRUPA', vid: 2, dl: '85.5', ul: '20.3', test_count: '10' },
-        ],
-      });
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            { id: 1, name: 'BERLIN-BK', country: 'ALMANYA', continent: 'AVRUPA', vpn_type: 'GSM', dl: '85.5', ul: '20.3', test_count: '10' },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [{ cnt: '5' }] }); // SELECT COUNT(*) FROM Cities
 
       const res = await app.inject({ method: 'GET', url: '/api/reports/noc-summary' });
       const body = JSON.parse(res.body);
@@ -221,9 +230,10 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
 
     it('response tüm webhook alanlarını içermeli', async () => {
       mockQuery
-        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })
-        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })  // INSERT WebhookLogs
+        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })         // SELECT CityID FROM Cities
+        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })      // INSERT VpnTypes
+        .mockResolvedValueOnce({ rows: [] });                      // INSERT SpeedStats
 
       const res = await app.inject({
         method: 'POST',
@@ -240,9 +250,10 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
 
     it('webhook_stats nested object olmalı (total + today)', async () => {
       mockQuery
-        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })
-        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })  // INSERT WebhookLogs
+        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })         // SELECT CityID FROM Cities
+        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })      // INSERT VpnTypes
+        .mockResolvedValueOnce({ rows: [] });                      // INSERT SpeedStats
 
       const res = await app.inject({
         method: 'POST',

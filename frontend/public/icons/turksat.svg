@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="10" fill="#1A237E"/>
+  <!-- Orbit ellipse -->
+  <ellipse cx="32" cy="36" rx="22" ry="10" stroke="rgba(255,255,255,0.7)" stroke-width="2" fill="none" transform="rotate(-15 32 36)"/>
+  <!-- Second orbit -->
+  <ellipse cx="32" cy="36" rx="14" ry="22" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" fill="none"/>
+  <!-- Satellite body -->
+  <rect x="27" y="10" width="10" height="7" rx="2" fill="white"/>
+  <!-- Solar panel left -->
+  <rect x="16" y="12" width="10" height="3" rx="1.5" fill="rgba(255,200,0,0.9)"/>
+  <!-- Solar panel right -->
+  <rect x="38" y="12" width="10" height="3" rx="1.5" fill="rgba(255,200,0,0.9)"/>
+  <!-- Crescent moon (Turkish symbol) -->
+  <circle cx="32" cy="38" r="8" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
+  <circle cx="35" cy="36" r="6" fill="#1A237E"/>
+  <!-- Star -->
+  <polygon points="38,34 38.6,36 40.6,36 39,37.1 39.6,39.1 38,38 36.4,39.1 37,37.1 35.4,36 37.4,36" fill="rgba(255,255,255,0.7)" transform="scale(0.7) translate(16,14)"/>
+</svg>

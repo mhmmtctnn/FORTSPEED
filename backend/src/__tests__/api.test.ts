@@ -20,9 +20,12 @@ describe('API Endpoints', () => {
 
   beforeAll(async () => {
     app = await buildApp({ testing: true, mockPg, mockRedis: {
-      publish: jest.fn().mockResolvedValue(1),
+      publish:   jest.fn().mockResolvedValue(1),
       subscribe: jest.fn(),
-      on: jest.fn(),
+      on:        jest.fn(),
+      get:       jest.fn().mockResolvedValue(null),
+      setex:     jest.fn().mockResolvedValue('OK'),
+      del:       jest.fn().mockResolvedValue(1),
     }});
     await app.ready();
   });
@@ -114,7 +117,10 @@ describe('API Endpoints', () => {
   // ── DELETE /api/cities/:id ────────────────────────────────────────────────────
   describe('DELETE /api/cities/:id', () => {
     it('deletes a city', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [] });
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ cityname: 'TEST', devicename: null }] }) // SELECT CityName
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })                           // DELETE SpeedStats
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 });                          // DELETE Cities RETURNING
       const res = await app.inject({ method: 'DELETE', url: '/api/cities/1' });
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body)).toEqual({ success: true });
@@ -196,10 +202,16 @@ describe('API Endpoints', () => {
   // ── GET /api/reports/filters ──────────────────────────────────────────────────
   describe('GET /api/reports/filters', () => {
     it('returns filter options', async () => {
-      mockQuery
-        .mockResolvedValueOnce({ rows: [{ kita: 'AVRUPA' }, { kita: 'ASYA' }] })
-        .mockResolvedValueOnce({ rows: [{ ulke: 'TURKIYE' }] })
-        .mockResolvedValueOnce({ rows: [{ vpntypename: 'GSM' }, { vpntypename: 'METRO' }] });
+      // Handler uses a single UNION ALL query returning {type, val} rows
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          { type: 'continent', val: 'AVRUPA' },
+          { type: 'continent', val: 'ASYA' },
+          { type: 'country',   val: 'TURKIYE' },
+          { type: 'vpntype',   val: 'GSM' },
+          { type: 'vpntype',   val: 'METRO' },
+        ],
+      });
 
       const res = await app.inject({ method: 'GET', url: '/api/reports/filters' });
       expect(res.statusCode).toBe(200);
@@ -212,9 +224,9 @@ describe('API Endpoints', () => {
   // ── POST /webhook/speedtest ───────────────────────────────────────────────────
   describe('POST /webhook/speedtest', () => {
     it('inserts speedtest data', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ statid: 1, cityid: 1, vpntypeid: 2, downloadspeed: 50, uploadspeed: 10 }],
-      });
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ statid: 1, cityid: 1 }] })   // INSERT SpeedStats RETURNING *
+        .mockResolvedValueOnce({ rows: [{ vpntypename: 'METRO' }] });   // SELECT VpnTypeName FROM VpnTypes
 
       const res = await app.inject({
         method: 'POST', url: '/webhook/speedtest',

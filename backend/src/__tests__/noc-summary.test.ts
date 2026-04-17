@@ -32,12 +32,14 @@ describe('NOC & Aggregate Endpoint Testleri', () => {
   // ─── GET /api/reports/noc-summary ────────────────────────────────────────
   describe('GET /api/reports/noc-summary', () => {
     it('returns NOC summary object', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [
-          { id: 1, name: 'BERLIN-BK', country: 'ALMANYA', continent: 'AVRUPA', vid: 2, dl: '85.5', ul: '20.3', test_count: '10' },
-          { id: 2, name: 'ANKARA-BK', country: 'TURKIYE', continent: 'AVRUPA', vid: 1, dl: '120.0', ul: '40.0', test_count: '5' },
-        ],
-      });
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            { id: 1, name: 'BERLIN-BK', country: 'ALMANYA', continent: 'AVRUPA', vpn_type: 'GSM',   dl: '85.5',  ul: '20.3', test_count: '10' },
+            { id: 2, name: 'ANKARA-BK', country: 'TURKIYE', continent: 'AVRUPA', vpn_type: 'METRO',  dl: '120.0', ul: '40.0', test_count: '5'  },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [{ cnt: '10' }] }); // SELECT COUNT(*) FROM Cities
 
       const res = await app.inject({ method: 'GET', url: '/api/reports/noc-summary?period=daily' });
       expect(res.statusCode).toBe(200);
@@ -49,7 +51,9 @@ describe('NOC & Aggregate Endpoint Testleri', () => {
     });
 
     it('returns empty arrays when no data', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [] });
+      mockQuery
+        .mockResolvedValueOnce({ rows: [] })              // main aggregation query
+        .mockResolvedValueOnce({ rows: [{ cnt: '0' }] }); // SELECT COUNT(*) FROM Cities
       const res = await app.inject({ method: 'GET', url: '/api/reports/noc-summary' });
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
@@ -68,7 +72,7 @@ describe('NOC & Aggregate Endpoint Testleri', () => {
   describe('GET /api/reports/sparklines', () => {
     it('returns sparkline data', async () => {
       const mockRows = [
-        { cid: 1, vid: 2, ts: '2025-01-01T00:00:00', dl: 50, ul: 10 },
+        { cid: 1, vpn_type: 'GSM', ts: '2025-01-01T00:00:00', dl: 50, ul: 10 },
       ];
       mockQuery
         .mockResolvedValueOnce({ rows: mockRows })  // daily

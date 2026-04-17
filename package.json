@@ -17,6 +17,9 @@
     "verify": "npm run typecheck && npm run test",
     "precommit": "npm run test:smoke && npm run typecheck"
   },
+  "overrides": {
+    "brace-expansion": ">=1.1.13"
+  },
   "dependencies": {
     "pg": "^8.20.0"
   },

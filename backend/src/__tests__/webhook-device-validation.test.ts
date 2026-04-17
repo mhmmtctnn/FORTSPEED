@@ -1,11 +1,10 @@
 /**
  * Webhook — Cihaz Doğrulama Testleri
  * =====================================
- * POST /webhook/event endpoint'i için:
+ * POST /api/webhook endpoint'i için:
  * - Misyon listesinde olan cihaz → kayıt yapılmalı (200)
- * - Misyon listesinde OLMAYAN cihaz → 400 + SystemLogs WARN
+ * - Misyon listesinde OLMAYAN cihaz → 400 + unknown_device publish
  * - Parse edilemeyen body → 400
- * - Koordinatlar doğru kaydedilmeli
  */
 
 import { buildApp } from '../app';
@@ -22,9 +21,36 @@ const mockQuery = jest.fn();
 const mockPublish = jest.fn().mockResolvedValue(1);
 
 const mockPg    = { query: mockQuery, connect: jest.fn() };
-const mockRedis = { publish: mockPublish, subscribe: jest.fn(), on: jest.fn() };
+const mockRedis = {
+  publish:   mockPublish,
+  subscribe: jest.fn(),
+  on:        jest.fn(),
+  get:       jest.fn().mockResolvedValue(null), // cache daima miss → DB'ye düş
+  setex:     jest.fn().mockResolvedValue('OK'),
+};
 
-describe('POST /webhook/event — Cihaz Doğrulama', () => {
+// Gerçek sorgu sırası:
+//   1. INSERT INTO WebhookLogs → { webhooklogid: N }
+//   2. SELECT CityID FROM Cities (findCityId) → { cityid: N } veya boş
+//   3. INSERT INTO VpnTypes ON CONFLICT  (yalnızca kayıtlı cihazda)
+//   4. INSERT INTO SpeedStats            (yalnızca kayıtlı cihazda)
+// UPDATE WebhookLogs (ParsedContext) try-catch ile sessizce geçilebilir → mock gerekmez
+
+const knownDeviceMock = (cityId: number, vpnTypeId = 1) => {
+  mockQuery
+    .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })     // INSERT WebhookLogs
+    .mockResolvedValueOnce({ rows: [{ cityid: cityId }] })       // SELECT CityID FROM Cities
+    .mockResolvedValueOnce({ rows: [{ vpntypeid: vpnTypeId }] }) // INSERT VpnTypes
+    .mockResolvedValueOnce({ rows: [] });                         // INSERT SpeedStats
+};
+
+const unknownDeviceMock = () => {
+  mockQuery
+    .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] }) // INSERT WebhookLogs
+    .mockResolvedValueOnce({ rows: [] });                    // SELECT CityID FROM Cities → boş
+};
+
+describe('POST /api/webhook — Cihaz Doğrulama', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
 
   beforeAll(async () => {
@@ -37,62 +63,44 @@ describe('POST /webhook/event — Cihaz Doğrulama', () => {
   beforeEach(() => {
     mockQuery.mockReset();
     mockPublish.mockClear();
+    mockRedis.get.mockResolvedValue(null); // her testte cache miss
   });
 
   // ─── Kayıtlı Cihaz ─────────────────────────────────────────────────────────
 
   it('kayıtlı cihazdan gelen webhook → SpeedStats kaydedilmeli (200)', async () => {
-    // 1. Cities sorgusu → cihaz bulundu
-    mockQuery
-      .mockResolvedValueOnce({ rows: [{ CityID: 1, CityName: 'BERLIN-BK', ENLEM: 52.52, BOYLAM: 13.40 }] })
-      // 2. VpnTypes ID sorgusu
-      .mockResolvedValueOnce({ rows: [{ VpnTypeID: 1 }] })
-      // 3. SpeedStats INSERT
-      .mockResolvedValueOnce({ rows: [{ statid: 1, cityid: 1 }] })
-      // 4. WebhookLogs INSERT
-      .mockResolvedValueOnce({ rows: [] });
+    knownDeviceMock(1);
 
-    const body = 'BERLIN-BK execute speed-test-ipsec METRO-LINK\nclient(sender): up_speed: 48.5 Mbps\nclient(recver): down_speed: 96.2 Mbps';
     const res = await app.inject({
-      method: 'POST', url: '/webhook/event',
+      method: 'POST', url: '/api/webhook',
       headers: { 'content-type': 'text/plain' },
-      body,
+      body: 'BERLIN-BK execute speed-test-ipsec METRO-LINK\nclient(sender): up_speed: 48.5 Mbps\nclient(recver): down_speed: 96.2 Mbps',
     });
 
     expect(res.statusCode).toBe(200);
     const parsed = JSON.parse(res.body);
-    expect(parsed.status).toBe('ok');
+    expect(parsed.status).toBe('OK');
   });
 
   it('kayıtlı cihaz → WebSocket publish çağrılmalı', async () => {
-    mockQuery
-      .mockResolvedValueOnce({ rows: [{ CityID: 2, CityName: 'BERLIN-BK', ENLEM: 52.52, BOYLAM: 13.40 }] })
-      .mockResolvedValueOnce({ rows: [{ VpnTypeID: 2 }] })
-      .mockResolvedValueOnce({ rows: [{ statid: 2 }] })
-      .mockResolvedValueOnce({ rows: [] });
+    knownDeviceMock(2, 2);
 
-    const body = 'BERLIN-BK execute speed-test-ipsec GSM-LINK\nclient(sender): up_speed: 30 Mbps\nclient(recver): down_speed: 60 Mbps';
     await app.inject({
-      method: 'POST', url: '/webhook/event',
+      method: 'POST', url: '/api/webhook',
       headers: { 'content-type': 'text/plain' },
-      body,
+      body: 'BERLIN-BK execute speed-test-ipsec GSM-LINK\nclient(sender): up_speed: 30 Mbps\nclient(recver): down_speed: 60 Mbps',
     });
 
     expect(mockPublish).toHaveBeenCalledWith('speedtest_updates', expect.stringContaining('"type":"speedtest"'));
   });
 
   it('kayıtlı cihaz → publish payload cityId içermeli', async () => {
-    mockQuery
-      .mockResolvedValueOnce({ rows: [{ CityID: 5, CityName: 'ANKARA-BE', ENLEM: 39.9, BOYLAM: 32.8 }] })
-      .mockResolvedValueOnce({ rows: [{ VpnTypeID: 1 }] })
-      .mockResolvedValueOnce({ rows: [{ statid: 5 }] })
-      .mockResolvedValueOnce({ rows: [] });
+    knownDeviceMock(5);
 
-    const body = 'ANKARA-BE execute speed-test-ipsec METRO\nclient(sender): up_speed: 20 Mbps\nclient(recver): down_speed: 80 Mbps';
     await app.inject({
-      method: 'POST', url: '/webhook/event',
+      method: 'POST', url: '/api/webhook',
       headers: { 'content-type': 'text/plain' },
-      body,
+      body: 'ANKARA-BE execute speed-test-ipsec METRO\nclient(sender): up_speed: 20 Mbps\nclient(recver): down_speed: 80 Mbps',
     });
 
     const publishCall = mockPublish.mock.calls.find(c => c[0] === 'speedtest_updates');
@@ -105,35 +113,26 @@ describe('POST /webhook/event — Cihaz Doğrulama', () => {
   // ─── Kayıtsız Cihaz ────────────────────────────────────────────────────────
 
   it('bilinmeyen cihaz → 400 döndürmeli', async () => {
-    // Cities sorgusu → bulunamadı
-    mockQuery
-      .mockResolvedValueOnce({ rows: [] })         // Cities lookup: boş
-      .mockResolvedValueOnce({ rows: [] })          // WebhookLogs INSERT
-      .mockResolvedValueOnce({ rows: [] });         // SystemLogs INSERT (WARN)
+    unknownDeviceMock();
 
-    const body = 'UNKNOWN-DEVICE execute speed-test-ipsec METRO-LINK\nclient(sender): up_speed: 10 Mbps\nclient(recver): down_speed: 20 Mbps';
     const res = await app.inject({
-      method: 'POST', url: '/webhook/event',
+      method: 'POST', url: '/api/webhook',
       headers: { 'content-type': 'text/plain' },
-      body,
+      body: 'UNKNOWN-DEVICE execute speed-test-ipsec METRO-LINK\nclient(sender): up_speed: 10 Mbps\nclient(recver): down_speed: 20 Mbps',
     });
 
     expect(res.statusCode).toBe(400);
     const parsed = JSON.parse(res.body);
-    expect(parsed.error).toContain('kayıtlı değil');
+    expect(parsed.message).toContain('kayıtlı değil');
   });
 
   it('bilinmeyen cihaz → unknown_device WebSocket mesajı yayınlanmalı', async () => {
-    mockQuery
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    unknownDeviceMock();
 
-    const body = 'PORTOFSPAIN-BE execute speed-test-ipsec BALGAT_GSM\nclient(sender): up_speed: 5 Mbps\nclient(recver): down_speed: 10 Mbps';
     await app.inject({
-      method: 'POST', url: '/webhook/event',
+      method: 'POST', url: '/api/webhook',
       headers: { 'content-type': 'text/plain' },
-      body,
+      body: 'PORTOFSPAIN-BE execute speed-test-ipsec BALGAT_GSM\nclient(sender): up_speed: 5 Mbps\nclient(recver): down_speed: 10 Mbps',
     });
 
     expect(mockPublish).toHaveBeenCalledWith(
@@ -143,16 +142,12 @@ describe('POST /webhook/event — Cihaz Doğrulama', () => {
   });
 
   it('bilinmeyen cihaz → unknown_device payload deviceName içermeli', async () => {
-    mockQuery
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    unknownDeviceMock();
 
-    const body = 'XYZDEVICE execute speed-test-ipsec METRO\nclient(sender): up_speed: 5 Mbps\nclient(recver): down_speed: 10 Mbps';
     await app.inject({
-      method: 'POST', url: '/webhook/event',
+      method: 'POST', url: '/api/webhook',
       headers: { 'content-type': 'text/plain' },
-      body,
+      body: 'XYZDEVICE execute speed-test-ipsec METRO\nclient(sender): up_speed: 5 Mbps\nclient(recver): down_speed: 10 Mbps',
     });
 
     const publishCall = mockPublish.mock.calls.find(c => {
@@ -165,19 +160,14 @@ describe('POST /webhook/event — Cihaz Doğrulama', () => {
   });
 
   it('bilinmeyen cihaz → SpeedStats INSERT yapılmamalı', async () => {
-    mockQuery
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    unknownDeviceMock();
 
-    const body = 'GHOST-DEVICE execute speed-test-ipsec METRO\nclient(sender): up_speed: 1 Mbps\nclient(recver): down_speed: 2 Mbps';
     await app.inject({
-      method: 'POST', url: '/webhook/event',
+      method: 'POST', url: '/api/webhook',
       headers: { 'content-type': 'text/plain' },
-      body,
+      body: 'GHOST-DEVICE execute speed-test-ipsec METRO\nclient(sender): up_speed: 1 Mbps\nclient(recver): down_speed: 2 Mbps',
     });
 
-    // SpeedStats INSERT çağrısını kontrol et: "SpeedStats" sorgusunda INSERT olmamalı
     const insertCalls = mockQuery.mock.calls.filter(c =>
       typeof c[0] === 'string' && c[0].includes('INSERT INTO SpeedStats')
     );
@@ -186,11 +176,12 @@ describe('POST /webhook/event — Cihaz Doğrulama', () => {
 
   // ─── Parse Edilemeyen Body ─────────────────────────────────────────────────
 
-  it('body parse edilemezse 400 döndürmeli', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValue({ rows: [] });
+  it('tanınamayan body → cihaz bulunamazsa 400 döndürmeli', async () => {
+    // Bilinmeyen format → deviceName='UNKNOWN' → cityId bulunamaz → 400
+    unknownDeviceMock();
 
     const res = await app.inject({
-      method: 'POST', url: '/webhook/event',
+      method: 'POST', url: '/api/webhook',
       headers: { 'content-type': 'text/plain' },
       body: 'totally unrecognized format no device no speed',
     });

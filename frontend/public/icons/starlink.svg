@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="10" fill="#0A0A0A"/>
+  <!-- Globe outline -->
+  <circle cx="30" cy="34" r="18" stroke="white" stroke-width="2" fill="none"/>
+  <!-- Vertical meridian -->
+  <ellipse cx="30" cy="34" rx="9" ry="18" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" fill="none"/>
+  <!-- Horizontal parallels -->
+  <line x1="12" y1="34" x2="48" y2="34" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+  <path d="M13 24 Q30 20 47 24" stroke="rgba(255,255,255,0.3)" stroke-width="1.2" fill="none"/>
+  <path d="M13 44 Q30 48 47 44" stroke="rgba(255,255,255,0.3)" stroke-width="1.2" fill="none"/>
+  <!-- Satellite -->
+  <circle cx="46" cy="16" r="5" fill="white"/>
+  <!-- Signal line from satellite to globe -->
+  <line x1="42" y1="20" x2="34" y2="28" stroke="white" stroke-width="1.5" opacity="0.6"/>
+  <!-- Solar panels on satellite -->
+  <rect x="39" y="13" width="5" height="2" rx="1" fill="rgba(255,255,255,0.7)" transform="rotate(-30 41.5 14)"/>
+  <rect x="47" y="11" width="5" height="2" rx="1" fill="rgba(255,255,255,0.7)" transform="rotate(-30 49.5 12)"/>
+</svg>
