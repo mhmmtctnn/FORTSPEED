@@ -12,10 +12,10 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          maps: ['maplibre-gl', 'react-map-gl'],
-          charts: ['recharts'],
+        manualChunks: (id) => {
+          if (id.includes('react-dom') || id.includes('/react/')) return 'react';
+          if (id.includes('maplibre-gl') || id.includes('react-map-gl')) return 'maps';
+          if (id.includes('recharts')) return 'charts';
         },
       },
     },

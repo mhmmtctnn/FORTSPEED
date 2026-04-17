@@ -6,10 +6,10 @@ WORKDIR /app
 ARG ITAI_MODE=false
 ENV VITE_ITAI_MODE=$ITAI_MODE
 
-# Dependencies yükle (npm ci ile deterministik ve hızlı)
+# Dependencies yükle
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+    npm install --prefer-offline
 
 # Source kod kopyala
 COPY . .

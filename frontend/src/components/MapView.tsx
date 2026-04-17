@@ -143,7 +143,7 @@ export default function MapView({
       });
     }
     if (tagFilter !== null) {
-      result = result.filter(m => (m.tags ?? []).includes(tagFilter));
+      result = result.filter(m => (m.tags ?? []).map(Number).includes(tagFilter));
     }
     if (speedFilter) {
       result = result.filter(m => getSpeedTier(m) === speedFilter);
@@ -1024,8 +1024,8 @@ export default function MapView({
                 onClick={e => { e.originalEvent.stopPropagation(); onMarkerClick(m); }}
                 style={{ zIndex: selected ? 10 : 1 }}
               >
-                {/* Tag badge marker when mission has tags and no active tag filter */}
-                {(firstTag && tagFilter === null) ? (
+                {/* Tag badge marker when mission has tags */}
+                {firstTag ? (
                   <div style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center',
                     gap: 3, cursor: 'pointer',
@@ -1160,7 +1160,7 @@ export default function MapView({
                         <span style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Tags</span>
                         {allTags.map(tag => {
                           const isActive = tagFilter === tag.id;
-                          const cnt = filteredMissions.filter(m => (m.tags ?? []).includes(tag.id)).length;
+                          const cnt = filteredMissions.filter(m => (m.tags ?? []).map(Number).includes(tag.id)).length;
                           return (
                             <button key={tag.id} onClick={() => setTagFilter(p => p === tag.id ? null : tag.id)} style={{
                               display: 'flex', alignItems: 'center', gap: 8,

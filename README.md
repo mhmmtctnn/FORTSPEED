@@ -5,11 +5,11 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.6.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.6.0)
+[![Version](https://img.shields.io/badge/version-1.7.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.7.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
-[![Fastify](https://img.shields.io/badge/Fastify-4.x-000000?logo=fastify&logoColor=white)](https://fastify.dev/)
+[![Fastify](https://img.shields.io/badge/Fastify-5.x-000000?logo=fastify&logoColor=white)](https://fastify.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
 </div>
@@ -250,14 +250,14 @@ services:
 | Layer | Technology | Version |
 |---|---|---|
 | **Frontend Framework** | React | 18.x |
-| **Build Tool** | Vite | 5.x |
+| **Build Tool** | Vite | 8.x |
 | **Language** | TypeScript | 5.x |
 | **Charts** | Recharts | 2.12.x |
 | **Map** | MapLibre-GL + react-map-gl | 4.x / 7.x |
 | **Data Fetching** | TanStack React Query | 5.x |
 | **HTTP Client** | Axios | 1.x |
 | **Icons** | Lucide React | 0.344.x |
-| **Backend Framework** | Fastify | 4.x |
+| **Backend Framework** | Fastify | 5.x |
 | **Database Client** | node-postgres (pg) | 8.x |
 | **Cache / Pub-Sub** | Redis (ioredis) | 5.x |
 | **Database** | PostgreSQL | 16 |
@@ -269,6 +269,25 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.7.0 — 2026-04-17
+
+**Map Tag Filter Fix & Vite 8 Build Compatibility**
+
+#### 🐛 Bug Fixes
+
+- **Map Tag Filter — Missions No Longer Disappear**
+  - Tag filter now correctly matches missions using `Number()` coercion; previously tags from the API arrived as strings and strict `===` comparison caused all missions to be filtered out
+  - Tag icon badges on mission markers now remain visible when a tag filter is active; the `tagFilter === null` guard was incorrectly hiding icons on matched missions
+
+- **Vite 8 `manualChunks` Compatibility**
+  - `vite.config.ts` migrated `manualChunks` from object to function format; Vite 8 dropped object support, causing Docker production builds to fail with `TypeError: manualChunks is not a function`
+
+#### 🐳 Docker Build Fix
+
+- Frontend Dockerfile switched from `npm ci` to `npm install --prefer-offline` to resolve `package-lock.json` format incompatibility between local npm 11.x and Docker node:20-alpine npm 10.x; `@emnapi/core` and `@emnapi/runtime` optional peer dependencies were previously missing from the lock file as seen by the older npm version
+
+---
 
 ### v1.6.0 — 2026-04-17
 
