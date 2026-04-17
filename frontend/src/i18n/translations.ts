@@ -167,6 +167,23 @@ const translations = {
     flag_active_on:   'aktif',
     flag_active_off:  'pasif',
     flag_map_note:    '— Harita sekmesine geçince hemen uygulanır.',
+
+    // ── Ayarlar kategorileri ──
+    cat_appearance:   'Görünüm',
+    cat_map:          'Harita',
+    cat_language:     'Dil',
+    cat_tags:         'Taglar',
+    settings_label:   'Ayarlar',
+    settings_lang_label: 'Arayüz dili',
+    settings_lang_hint:  'Tüm arayüz metinleri seçilen dilde gösterilir',
+    settings_logo_section: 'Logo',
+    settings_logo_sidebar: 'Sidebar üstünde gösterilir',
+    settings_theme_section: 'Tema',
+    settings_theme_ui: 'Arayüz teması',
+    settings_theme_ui_desc: 'Koyu veya açık mod',
+    settings_logo_custom: 'Özel logo',
+    btn_upload:        'Yükle',
+    btn_remove:        'Kaldır',
   },
 
   en: {
@@ -321,6 +338,23 @@ const translations = {
     flag_active_on:   'active',
     flag_active_off:  'inactive',
     flag_map_note:    '— Takes effect when switching to the Map tab.',
+
+    // ── Settings categories ──
+    cat_appearance:   'Appearance',
+    cat_map:          'Map',
+    cat_language:     'Language',
+    cat_tags:         'Tags',
+    settings_label:   'Settings',
+    settings_lang_label: 'Interface language',
+    settings_lang_hint:  'All interface texts are shown in the selected language',
+    settings_logo_section: 'Logo',
+    settings_logo_sidebar: 'Displayed above the sidebar',
+    settings_theme_section: 'Theme',
+    settings_theme_ui: 'Interface theme',
+    settings_theme_ui_desc: 'Dark or light mode',
+    settings_logo_custom: 'Custom logo',
+    btn_upload:        'Upload',
+    btn_remove:        'Remove',
   },
 
   fr: {
@@ -475,6 +509,23 @@ const translations = {
     flag_active_on:   'actif',
     flag_active_off:  'inactif',
     flag_map_note:    '— Prend effet en passant à l\'onglet Carte.',
+
+    // ── Catégories paramètres ──
+    cat_appearance:   'Apparence',
+    cat_map:          'Carte',
+    cat_language:     'Langue',
+    cat_tags:         'Tags',
+    settings_label:   'Paramètres',
+    settings_lang_label: "Langue de l'interface",
+    settings_lang_hint:  "Tous les textes de l'interface sont affichés dans la langue sélectionnée",
+    settings_logo_section: 'Logo',
+    settings_logo_sidebar: 'Affiché au-dessus de la barre latérale',
+    settings_theme_section: 'Thème',
+    settings_theme_ui: "Thème de l'interface",
+    settings_theme_ui_desc: 'Mode sombre ou clair',
+    settings_logo_custom: 'Logo personnalisé',
+    btn_upload:        'Charger',
+    btn_remove:        'Supprimer',
   },
 
   ar: {
@@ -629,6 +680,23 @@ const translations = {
     flag_active_on:   'نشطة',
     flag_active_off:  'غير نشطة',
     flag_map_note:    '— يُطبَّق عند الانتقال إلى تبويب الخريطة.',
+
+    // ── فئات الإعدادات ──
+    cat_appearance:   'المظهر',
+    cat_map:          'الخريطة',
+    cat_language:     'اللغة',
+    cat_tags:         'التاجات',
+    settings_label:   'الإعدادات',
+    settings_lang_label: 'لغة الواجهة',
+    settings_lang_hint:  'تُعرض جميع نصوص الواجهة باللغة المختارة',
+    settings_logo_section: 'الشعار',
+    settings_logo_sidebar: 'يظهر فوق الشريط الجانبي',
+    settings_theme_section: 'السمة',
+    settings_theme_ui: 'سمة الواجهة',
+    settings_theme_ui_desc: 'الوضع الداكن أو الفاتح',
+    settings_logo_custom: 'شعار مخصص',
+    btn_upload:        'رفع',
+    btn_remove:        'إزالة',
   },
 };
 

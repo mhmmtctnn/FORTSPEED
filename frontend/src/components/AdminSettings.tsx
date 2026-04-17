@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Settings2, Map as MapIcon, Eye, EyeOff, Languages, ImagePlus, Trash2, Tag, Palette, Monitor } from 'lucide-react';
-import { useLanguage, LOCALE_LABELS, LOCALE_FLAGS, Locale } from '../i18n';
+import { useLanguage, useT, LOCALE_LABELS, LOCALE_FLAGS, Locale } from '../i18n';
 import TagsManager from './TagsManager';
 
 interface AppSettings {
@@ -27,16 +27,17 @@ const CATEGORIES: { id: SettingsCategory; icon: React.ReactNode; labelKey: strin
   { id: 'tags',       icon: <Tag size={16} />,       labelKey: 'cat_tags' },
 ];
 
-// Kategori etiketleri — i18n eklenene kadar sabit
-const CAT_LABELS: Record<SettingsCategory, string> = {
-  appearance: 'Görünüm',
-  map:        'Harita',
-  language:   'Dil',
-  tags:       'Taglar',
+type CatKey = 'cat_appearance' | 'cat_map' | 'cat_language' | 'cat_tags';
+const CAT_KEYS: Record<SettingsCategory, CatKey> = {
+  appearance: 'cat_appearance',
+  map:        'cat_map',
+  language:   'cat_language',
+  tags:       'cat_tags',
 };
 
 export default function AdminSettings({ settings, onSettingsChange }: Props) {
   const { locale, setLocale } = useLanguage();
+  const t = useT();
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('appearance');
   const toggle = (key: keyof AppSettings) =>
     onSettingsChange({ ...settings, [key]: !settings[key] });
@@ -64,7 +65,7 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, paddingLeft: 8 }}>
           <Settings2 size={18} color="var(--accent)" />
-          <span style={{ fontWeight: 800, fontSize: '1rem' }}>Ayarlar</span>
+          <span style={{ fontWeight: 800, fontSize: '1rem' }}>{t('settings_label')}</span>
         </div>
 
         {CATEGORIES.map(cat => {
@@ -87,7 +88,7 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
               }}
             >
               <span style={{ opacity: active ? 1 : 0.6, flexShrink: 0 }}>{cat.icon}</span>
-              {CAT_LABELS[cat.id]}
+              {t(CAT_KEYS[cat.id])}
             </button>
           );
         })}
@@ -101,7 +102,7 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
           <span style={{ color: 'var(--accent)' }}>
             {CATEGORIES.find(c => c.id === activeCategory)?.icon}
           </span>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{CAT_LABELS[activeCategory]}</h2>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{t(CAT_KEYS[activeCategory])}</h2>
         </div>
 
         {/* ── Görünüm ── */}
@@ -113,12 +114,12 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
             <div className="glass-card" style={{ padding: '20px 24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                 <Palette size={15} color="var(--accent)" />
-                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--accent)' }}>Tema</span>
+                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--accent)' }}>{t('settings_theme_section')}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>Arayüz teması</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Koyu veya açık mod</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>{t('settings_theme_ui')}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('settings_theme_ui_desc')}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 'var(--radius)' }}>
                   {(['dark', 'light'] as const).map(thm => {
@@ -135,7 +136,7 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
                         cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
                         fontFamily: 'inherit', transition: 'var(--transition)',
                       }}>
-                        {thm === 'dark' ? '🌙 Koyu' : '☀️ Açık'}
+                        {thm === 'dark' ? t('theme_dark') : t('theme_light')}
                       </button>
                     );
                   })}
@@ -147,12 +148,12 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
             <div className="glass-card" style={{ padding: '20px 24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                 <ImagePlus size={15} color="var(--accent)" />
-                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--accent)' }}>Logo</span>
+                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--accent)' }}>{t('settings_logo_section')}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>Özel logo</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sidebar üstünde gösterilir</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>{t('settings_logo_custom')}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('settings_logo_sidebar')}</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                   {settings.logo && (
@@ -171,7 +172,7 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
                     cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
                     fontFamily: 'inherit', transition: 'var(--transition)',
                   }}>
-                    <ImagePlus size={13} /> Yükle
+                    <ImagePlus size={13} /> {t('btn_upload')}
                   </button>
                   {settings.logo && (
                     <button onClick={() => onSettingsChange({ ...settings, logo: undefined })} style={{
@@ -181,7 +182,7 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
                       cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
                       fontFamily: 'inherit', transition: 'var(--transition)',
                     }}>
-                      <Trash2 size={13} /> Kaldır
+                      <Trash2 size={13} /> {t('btn_remove')}
                     </button>
                   )}
                 </div>
@@ -196,29 +197,29 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
             {[
               {
                 key: 'showHeatmap' as const,
-                label: 'Hız haritası (Heatmap)',
-                desc: 'Misyonların hız yoğunluğunu renk katmanı olarak gösterir',
+                labelKey: 'settings_heatmap',
+                descKey: 'settings_heatmap_desc',
                 color: 'var(--purple)', dimColor: 'var(--purple-dim)', borderColor: 'rgba(168,85,247,0.3)',
               },
               {
                 key: 'showFlags' as const,
-                label: 'Ülke bayrakları',
-                desc: 'Dünya haritasında ülke sınırları ve bayrak overlay',
+                labelKey: 'settings_flags',
+                descKey: 'settings_flags_desc',
                 color: 'var(--green)', dimColor: 'var(--green-dim)', borderColor: 'rgba(34,197,94,0.3)',
               },
               {
                 key: 'showArcs' as const,
-                label: 'Bağlantı yayları',
-                desc: 'Misyonlardan merkeze akan animasyonlu hız çizgileri',
+                labelKey: 'settings_arcs',
+                descKey: 'settings_arcs_desc',
                 color: '#38bdf8', dimColor: 'rgba(56,189,248,0.12)', borderColor: 'rgba(56,189,248,0.35)',
               },
-            ].map(({ key, label, desc, color, dimColor, borderColor }) => {
+            ].map(({ key, labelKey, descKey, color, dimColor, borderColor }) => {
               const on = !!settings[key];
               return (
                 <div key={key} className="glass-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 3 }}>{label}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{desc}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 3 }}>{t(labelKey)}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t(descKey)}</div>
                   </div>
                   <button onClick={() => toggle(key)} style={{
                     display: 'flex', alignItems: 'center', gap: 7,
@@ -231,14 +232,14 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
                     transition: 'var(--transition)', flexShrink: 0, minWidth: 80,
                   }}>
                     {on ? <Eye size={14} /> : <EyeOff size={14} />}
-                    {on ? 'Açık' : 'Kapalı'}
+                    {on ? t('on') : t('off')}
                   </button>
                 </div>
               );
             })}
 
             <div style={{ padding: '10px 14px', background: settings.showFlags ? 'var(--green-dim)' : 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', fontSize: '0.76rem', color: settings.showFlags ? 'var(--green)' : 'var(--text-muted)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              {settings.showFlags ? '✅' : '⭕'} Bayrak overlay <b>{settings.showFlags ? 'aktif' : 'kapalı'}</b> — harita performansını etkileyebilir
+              {settings.showFlags ? '✅' : '⭕'} {t('flag_active')} <b>{settings.showFlags ? t('flag_active_on') : t('flag_active_off')}</b> {t('flag_map_note')}
             </div>
           </div>
         )}
@@ -246,8 +247,8 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
         {/* ── Dil ── */}
         {activeCategory === 'language' && (
           <div className="glass-card" style={{ padding: '20px 24px' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>Arayüz dili</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 16 }}>Tüm arayüz metinleri seçilen dilde gösterilir</div>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>{t('settings_lang_label')}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 16 }}>{t('settings_lang_hint')}</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {LOCALES.map(loc => {
                 const active = locale === loc;
@@ -278,7 +279,7 @@ export default function AdminSettings({ settings, onSettingsChange }: Props) {
 
         {/* Alt not */}
         <div style={{ marginTop: 24, fontSize: '0.73rem', color: 'var(--text-muted)', padding: '10px 14px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-          💡 Ayarlar tarayıcı localStorage'a kaydedilir.
+          💡 {t('settings_storage')}
         </div>
       </div>
     </div>
