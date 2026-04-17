@@ -19,6 +19,9 @@ jobs:
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -55,6 +58,9 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -107,6 +113,9 @@ jobs:
   build:
     name: Build & Security
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
 

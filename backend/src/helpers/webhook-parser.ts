@@ -7,16 +7,20 @@
 
 /** Payload türünü otomatik tespit et — combined: hem members hem status aynı body'de */
 export function detectPayloadType(body: string): 'speedtest' | 'sdwan_members' | 'sdwan_status' | 'sdwan_combined' | 'sdwan_json' | 'unknown' {
+  // Guard: oversized body'yi reddet (ReDoS önleme)
+  if (body.length > 1_000_000) return 'unknown';
+
   // FortiGate CLI format
-  const hasMembers = /config\s+members/.test(body) && /set\s+interface/.test(body);
+  const hasMembers = /config[ \t]+members/.test(body) && /set[ \t]+interface/.test(body);
   const hasStatus  = /sdwan_mbr_seq=/.test(body);
   if (hasMembers && hasStatus) return 'sdwan_combined';
   if (hasStatus)  return 'sdwan_status';
   if (hasMembers) return 'sdwan_members';
-  if (/up_speed:|down_speed:|execute\s+speed-test-ipsec|upload[_\-]?speed|download[_\-]?speed/i.test(body)) return 'speedtest';
+  if (/up_speed:|down_speed:|execute speed-test-ipsec|upload[_-]?speed|download[_-]?speed/i.test(body)) return 'speedtest';
   // FortiGate SDWAN komut satırı (çıktısız) — "DEVICE diagnose sys session list | grep sdwan"
   //                                            "DEVICE show system sdwan"
-  if (/diagnose\s+sys\s+session.*sdwan|show\s+system\s+sdwan/i.test(body)) return 'sdwan_status';
+  // Not: [^\n]* yerine .* kullanmak ReDoS riski oluşturur
+  if (/diagnose[ \t]+sys[ \t]+session[^\n]*sdwan|show[ \t]+system[ \t]+sdwan/i.test(body)) return 'sdwan_status';
   // JSON format: {"deviceName":"...","members":[...],...} veya {"sdwan":{...}}
   try {
     const j = JSON.parse(body);
@@ -183,13 +187,24 @@ export function parseSpeedTestBody(body: string) {
   //    Matches: "start speedtest BALGAT_GSM: 10.x.x.x -> 212.x.x.x"
   if (!deviceName || !vpnName) {
     for (const line of lines) {
-      const m = line.match(/start speedtest\s+(\S+?)(?:\((\S+?)\))?:/i);
-      if (m) {
-        if (!vpnName) vpnName = m[1];
-        if (!deviceName && m[2]) deviceName = m[2];
-        else if (!deviceName) deviceName = m[1];
-        break;
+      // Not: \S+? ile lazy match + grup kombinasyonu backtrack riski taşır
+      // Yerine: : karakterini sınır olarak kullanarak split-tabanlı parse
+      const colonIdx = line.indexOf(':');
+      if (colonIdx === -1) continue;
+      const prefix = line.slice(0, colonIdx).trimStart();
+      if (!prefix.toLowerCase().startsWith('start speedtest')) continue;
+      // prefix: "start speedtest VPN_NAME" veya "start speedtest VPN(device)"
+      const rest = prefix.slice('start speedtest'.length).trim();
+      const parenOpen = rest.indexOf('(');
+      if (parenOpen !== -1) {
+        const parenClose = rest.indexOf(')', parenOpen);
+        if (!vpnName) vpnName = rest.slice(0, parenOpen).trim() || null;
+        if (!deviceName && parenClose !== -1) deviceName = rest.slice(parenOpen + 1, parenClose).trim() || null;
+      } else {
+        if (!vpnName) vpnName = rest || null;
+        if (!deviceName) deviceName = rest || null;
       }
+      break;
     }
   }
 

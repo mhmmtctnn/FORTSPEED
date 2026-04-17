@@ -28,8 +28,10 @@ const PROVIDER_ICONS = [
 ];
 
 // URL veya local path mi, emoji mi — buna göre render et
+// Güvenlik: yalnızca /icons/ local path'lerine izin veriliyor (harici URL'ler reddedilir)
+const ALLOWED_ICON_PREFIX = '/icons/';
 export function renderTagIcon(icon: string, size = 16) {
-  if (icon.startsWith('http') || icon.startsWith('/')) {
+  if (icon.startsWith(ALLOWED_ICON_PREFIX)) {
     return (
       <img
         src={icon}
@@ -38,6 +40,7 @@ export function renderTagIcon(icon: string, size = 16) {
       />
     );
   }
+  // Harici URL'leri (http/https//) kabul etme — sadece emoji/metin renderla
   return <span style={{ fontSize: size * 0.9, lineHeight: 1 }}>{icon}</span>;
 }
 

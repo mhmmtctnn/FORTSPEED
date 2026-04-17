@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import postgres from '@fastify/postgres';
 import websocket from '@fastify/websocket';
+import rateLimit from '@fastify/rate-limit';
 import Redis from 'ioredis';
 import { registerItaiMiddleware } from './middleware/itai';
 import { convertToMbps, resolveVpnType, parseSpeedTestBody, detectPayloadType, parseSdwanMembers, parseSdwanStatus, parseSdwanJson } from './helpers/webhook-parser';
@@ -19,6 +20,22 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   const fastify = Fastify({ logger: opts.testing ? false : true });
 
   fastify.register(cors, { origin: true });
+
+  // Rate limiting — DoS/brute-force koruması
+  // Test modunda devre dışı bırakılır
+  if (!opts.testing) {
+    fastify.register(rateLimit, {
+      global: true,
+      max: 300,           // 5 dakikada 300 istek (tüm endpoint'ler)
+      timeWindow: '5 minutes',
+      allowList: ['127.0.0.1', '::1'], // localhost'tan gelen isteklere limit yok
+      errorResponseBuilder: (_req, context) => ({
+        status: 'Rate limit exceeded',
+        message: `Too many requests. Retry after ${Math.ceil(context.ttl / 1000)}s`,
+        retry_after: Math.ceil(context.ttl / 1000),
+      }),
+    });
+  }
 
   // ITAI Hub integration — SSO, trace ID, cookie config
   await registerItaiMiddleware(fastify, { itaiMode: opts.itaiMode });
