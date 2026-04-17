@@ -5,23 +5,15 @@ import { ShieldCheck, Lock, User, Eye, EyeOff, Wifi } from 'lucide-react';
 type GeoRing     = [number, number][];
 type GeoFeatures = { geometry: { type: string; coordinates: GeoRing[] | GeoRing[][] } }[];
 
-// ─── 3D orthographic globe projection ────────────────────────────────────────
-function projectGlobe(lon: number, lat: number, rotY: number, cx: number, cy: number, R: number) {
-  const phi = (lat * Math.PI) / 180;
-  const lam = (lon * Math.PI) / 180 + rotY;
-  const x3  = Math.cos(phi) * Math.sin(lam);
-  const y3  = Math.sin(phi);
-  const z3  = Math.cos(phi) * Math.cos(lam);
-  return { sx: cx + x3 * R, sy: cy - y3 * R, z: z3, visible: z3 >= 0 };
+// ─── Mercator projection ──────────────────────────────────────────────────────
+function project(lon: number, lat: number, W: number, H: number) {
+  const clampedLat = Math.max(-85, Math.min(85, lat));
+  const x  = ((lon + 180) / 360) * W;
+  const lr = (clampedLat * Math.PI) / 180;
+  const mn = Math.log(Math.tan(Math.PI / 4 + lr / 2));
+  const y  = H / 2 - (mn * W) / (2 * Math.PI);
+  return { x, y };
 }
-
-// ─── Static starfield (fibonacci-distributed) ─────────────────────────────────
-const STARS = Array.from({ length: 200 }, (_, i) => ({
-  x: ((Math.sin(i * 2.39996) + 1) / 2),
-  y: ((Math.cos(i * 1.61803) + 1) / 2),
-  r: 0.35 + (i % 5) * 0.18,
-  a: 0.25 + (i % 7) * 0.09,
-}));
 
 // ─── City nodes ───────────────────────────────────────────────────────────────
 const NODES = [
@@ -77,16 +69,16 @@ const LINKS = [
   [0,26],[2,26],[5,23],[19,33],[24,33],[21,33],[10,17],
 ];
 
-// ─── Draw a GeoJSON ring on the globe (break path at horizon) ─────────────────
-function drawGlobeRing(ctx: CanvasRenderingContext2D, ring: GeoRing, rotY: number, cx: number, cy: number, R: number) {
+// ─── Draw a GeoJSON ring as a canvas sub-path ─────────────────────────────────
+function drawRing(ctx: CanvasRenderingContext2D, ring: GeoRing, W: number, H: number) {
   if (ring.length < 2) return;
-  let prevZ = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const { sx, sy, z } = projectGlobe(ring[i][0], ring[i][1], rotY, cx, cy, R);
-    if (i === 0 || prevZ * z < -0.02) ctx.moveTo(sx, sy);
-    else ctx.lineTo(sx, sy);
-    prevZ = z;
+  const { x: x0, y: y0 } = project(ring[0][0], ring[0][1], W, H);
+  ctx.moveTo(x0, y0);
+  for (let i = 1; i < ring.length; i++) {
+    const { x, y } = project(ring[i][0], ring[i][1], W, H);
+    ctx.lineTo(x, y);
   }
+  ctx.closePath();
 }
 
 export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
@@ -120,82 +112,50 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
     const ctx = cv.getContext('2d');
     if (!ctx) return;
 
-    const W    = cv.width;
-    const H    = cv.height;
-    const t    = (tRef.current += 0.006);
-    const rotY = t * 0.0028;              // ~37 s per full revolution
-    const cx   = W / 2;
-    const cy   = H / 2;
-    const R    = Math.min(W, H) * 0.44;  // globe radius
-
-    // helper: project + draw a grid arc with horizon breaks
-    const gridArc = (pts: [number, number][]) => {
-      ctx.beginPath();
-      let prevZ = 0;
-      pts.forEach(([lon, lat], i) => {
-        const p = projectGlobe(lon, lat, rotY, cx, cy, R);
-        if (i === 0 || prevZ * p.z < -0.02) ctx.moveTo(p.sx, p.sy);
-        else ctx.lineTo(p.sx, p.sy);
-        prevZ = p.z;
-      });
-      ctx.stroke();
-    };
+    const W = cv.width;
+    const H = cv.height;
+    const t = (tRef.current += 0.006);
 
     // 1 ── Deep space background
     ctx.fillStyle = '#020a14';
     ctx.fillRect(0, 0, W, H);
 
-    // 2 ── Starfield
-    STARS.forEach(s => {
-      ctx.beginPath();
-      ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(190,215,255,${s.a})`;
-      ctx.fill();
-    });
-
-    // 3 ── Atmosphere glow (outside sphere)
-    const atmo = ctx.createRadialGradient(cx, cy, R * 0.93, cx, cy, R * 1.13);
-    atmo.addColorStop(0,   'rgba(56,189,248,0.14)');
-    atmo.addColorStop(0.55,'rgba(56,189,248,0.05)');
-    atmo.addColorStop(1,   'transparent');
-    ctx.beginPath(); ctx.arc(cx, cy, R * 1.13, 0, Math.PI * 2);
-    ctx.fillStyle = atmo; ctx.fill();
-
-    // 4 ── Sphere base (deep ocean)
-    const ocean = ctx.createRadialGradient(cx - R * 0.28, cy - R * 0.28, R * 0.04, cx, cy, R);
-    ocean.addColorStop(0,   'rgba(6,24,66,1)');
-    ocean.addColorStop(0.6, 'rgba(3,12,36,1)');
-    ocean.addColorStop(1,   'rgba(2,8,20,1)');
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.fillStyle = ocean; ctx.fill();
-
-    // 5 ── Clip to globe disc for interior drawing
+    // 2 ── Subtle lat/lon grid
     ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.strokeStyle = 'rgba(56,189,248,0.06)';
+    ctx.lineWidth   = 0.7;
+    for (let lng = -180; lng <= 180; lng += 30) {
+      const { x } = project(lng, 0, W, H);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let lat = -60; lat <= 75; lat += 30) {
+      const { y } = project(0, lat, W, H);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    ctx.restore();
 
-    // 6 ── Lat/lon grid on sphere
-    ctx.strokeStyle = 'rgba(56,189,248,0.07)';
-    ctx.lineWidth   = 0.6;
-    for (let lat = -60; lat <= 75; lat += 30)
-      gridArc(Array.from({ length: 121 }, (_, i) => [-180 + i * 3, lat] as [number, number]));
-    for (let lon = -180; lon < 180; lon += 30)
-      gridArc(Array.from({ length: 61  }, (_, i) => [lon, -90 + i * 3] as [number, number]));
-
-    // 7 ── Country fills
+    // 3 ── Country polygons from real GeoJSON
     const features = geoRef.current;
     if (features) {
+      // Pass A: filled land mass
+      ctx.save();
       ctx.fillStyle = 'rgba(14,42,80,0.55)';
       features.forEach(f => {
         const geom = f.geometry;
         ctx.beginPath();
-        if (geom.type === 'Polygon')
-          (geom.coordinates as GeoRing[]).forEach(ring => drawGlobeRing(ctx, ring, rotY, cx, cy, R));
-        else if (geom.type === 'MultiPolygon')
-          (geom.coordinates as GeoRing[][]).forEach(poly => poly.forEach(ring => drawGlobeRing(ctx, ring, rotY, cx, cy, R)));
+        if (geom.type === 'Polygon') {
+          (geom.coordinates as GeoRing[]).forEach(ring => drawRing(ctx, ring, W, H));
+        } else if (geom.type === 'MultiPolygon') {
+          (geom.coordinates as GeoRing[][]).forEach(poly =>
+            poly.forEach(ring => drawRing(ctx, ring, W, H))
+          );
+        }
         ctx.fill('evenodd');
       });
+      ctx.restore();
 
-      // Country borders — cyan glow
+      // Pass B: glowing cyan border
+      ctx.save();
       ctx.strokeStyle = 'rgba(56,189,248,0.55)';
       ctx.lineWidth   = 0.8;
       ctx.shadowColor = '#38bdf8';
@@ -203,50 +163,37 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
       features.forEach(f => {
         const geom = f.geometry;
         ctx.beginPath();
-        if (geom.type === 'Polygon')
-          (geom.coordinates as GeoRing[]).forEach(ring => drawGlobeRing(ctx, ring, rotY, cx, cy, R));
-        else if (geom.type === 'MultiPolygon')
-          (geom.coordinates as GeoRing[][]).forEach(poly => poly.forEach(ring => drawGlobeRing(ctx, ring, rotY, cx, cy, R)));
+        if (geom.type === 'Polygon') {
+          (geom.coordinates as GeoRing[]).forEach(ring => drawRing(ctx, ring, W, H));
+        } else if (geom.type === 'MultiPolygon') {
+          (geom.coordinates as GeoRing[][]).forEach(poly =>
+            poly.forEach(ring => drawRing(ctx, ring, W, H))
+          );
+        }
         ctx.stroke();
       });
-      ctx.shadowBlur = 0;
+      ctx.restore();
     }
 
-    // 8 ── Specular highlight (top-left 3D sheen)
-    const spec = ctx.createRadialGradient(cx - R * 0.38, cy - R * 0.38, 0, cx, cy, R);
-    spec.addColorStop(0,   'rgba(255,255,255,0.08)');
-    spec.addColorStop(0.3, 'rgba(56,189,248,0.03)');
-    spec.addColorStop(1,   'transparent');
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.fillStyle = spec; ctx.fill();
+    // 4 ── Pre-project nodes
+    const pts = NODES.map(n => project(n.lon, n.lat, W, H));
 
-    ctx.restore(); // end clip
-
-    // 9 ── Sphere edge glow (limb darkening effect)
-    const limb = ctx.createRadialGradient(cx, cy, R * 0.86, cx, cy, R * 1.01);
-    limb.addColorStop(0,   'transparent');
-    limb.addColorStop(0.7, 'rgba(56,189,248,0.10)');
-    limb.addColorStop(1,   'rgba(56,189,248,0.22)');
-    ctx.beginPath(); ctx.arc(cx, cy, R * 1.01, 0, Math.PI * 2);
-    ctx.fillStyle = limb; ctx.fill();
-
-    // 10 ── Project all nodes (globe coords)
-    const pts = NODES.map(n => projectGlobe(n.lon, n.lat, rotY, cx, cy, R));
-
-    // 11 ── Connection lines (visible hemisphere only)
+    // 5 ── Connection lines
     LINKS.forEach(([ai, bi]) => {
       const a = pts[ai]; const b = pts[bi];
-      if (!a || !b || !a.visible || !b.visible) return;
-      const dx = b.sx - a.sx; const dy = b.sy - a.sy;
+      if (!a || !b) return;
+      const dx = b.x - a.x; const dy = b.y - a.y;
       const dist = Math.hypot(dx, dy);
-      if (dist > W * 0.55) return;
+      if (dist > W * 0.65) return;
+
       const alpha = 0.3 + 0.14 * Math.sin(t * 1.3 + ai * 0.7);
-      const mx = (a.sx + b.sx) / 2;
-      const my = (a.sy + b.sy) / 2 - dist * 0.06;
+      const mx    = (a.x + b.x) / 2;
+      const my    = (a.y + b.y) / 2 - dist * 0.06;
+
       ctx.save();
       ctx.beginPath();
-      ctx.moveTo(a.sx, a.sy);
-      ctx.quadraticCurveTo(mx, my, b.sx, b.sy);
+      ctx.moveTo(a.x, a.y);
+      ctx.quadraticCurveTo(mx, my, b.x, b.y);
       ctx.strokeStyle = `rgba(56,189,248,${alpha})`;
       ctx.lineWidth   = 1.1;
       ctx.shadowColor = '#38bdf8';
@@ -255,20 +202,22 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
       ctx.restore();
     });
 
-    // 12 ── Animated data packets (visible only)
+    // 6 ── Animated data packets
     for (let i = 0; i < 22; i++) {
       const ci   = (Math.floor(t / 0.8) * 13 + i * 7) % LINKS.length;
       const prog = ((t * (0.45 + (i % 5) * 0.12)) % 1);
       const [ai, bi] = LINKS[ci];
       const a = pts[ai]; const b = pts[bi];
-      if (!a || !b || !a.visible || !b.visible) continue;
-      const dx = b.sx - a.sx; const dy = b.sy - a.sy;
-      if (Math.hypot(dx, dy) > W * 0.55) continue;
-      const mx = (a.sx + b.sx) / 2;
-      const my = (a.sy + b.sy) / 2 - Math.hypot(dx, dy) * 0.06;
+      if (!a || !b) continue;
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      if (Math.hypot(dx, dy) > W * 0.65) continue;
+
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2 - Math.hypot(dx, dy) * 0.06;
       const tp = 1 - prog;
-      const px = tp*tp*a.sx + 2*tp*prog*mx + prog*prog*b.sx;
-      const py = tp*tp*a.sy + 2*tp*prog*my + prog*prog*b.sy;
+      const px = tp*tp*a.x + 2*tp*prog*mx + prog*prog*b.x;
+      const py = tp*tp*a.y + 2*tp*prog*my + prog*prog*b.y;
+
       ctx.save();
       ctx.beginPath();
       ctx.arc(px, py, 2.5, 0, Math.PI * 2);
@@ -279,50 +228,72 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
       ctx.restore();
     }
 
-    // 13 ── City nodes (visible hemisphere only)
+    // 7 ── City nodes
     NODES.forEach((node, i) => {
-      const p = pts[i];
-      if (!p?.visible) return;
-      const { sx: x, sy: y } = p;
+      const { x, y } = pts[i];
       const pulse   = Math.sin(t * 2.0 + i * 0.9);
       const isHub   = node.type === 'hub';
       const isAlert = node.type === 'alert';
+
       const baseColor = isAlert ? '#ef4444' : isHub ? '#22c55e' : '#4ade80';
       const glowColor = isAlert ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)';
       const nr        = isHub ? 6 : isAlert ? 7 : 4;
-      const hr        = nr + 8 + pulse * 3;
-      const hg        = ctx.createRadialGradient(x, y, nr, x, y, hr);
-      hg.addColorStop(0, glowColor); hg.addColorStop(1, 'transparent');
-      ctx.beginPath(); ctx.arc(x, y, hr, 0, Math.PI * 2); ctx.fillStyle = hg; ctx.fill();
+
+      // Outer halo
+      const hr = nr + 8 + pulse * 3;
+      const hg = ctx.createRadialGradient(x, y, nr, x, y, hr);
+      hg.addColorStop(0, glowColor);
+      hg.addColorStop(1, 'transparent');
+      ctx.beginPath(); ctx.arc(x, y, hr, 0, Math.PI * 2);
+      ctx.fillStyle = hg; ctx.fill();
+
+      // Pulsing ring
       if (isHub || isAlert) {
         ctx.beginPath();
         ctx.arc(x, y, nr + 10 + pulse * 4, 0, Math.PI * 2);
-        ctx.strokeStyle = isAlert ? `rgba(239,68,68,${0.28 + pulse * 0.14})` : `rgba(34,197,94,${0.22 + pulse * 0.12})`;
-        ctx.lineWidth = 1.4; ctx.stroke();
+        ctx.strokeStyle = isAlert
+          ? `rgba(239,68,68,${0.28 + pulse * 0.14})`
+          : `rgba(34,197,94,${0.22 + pulse * 0.12})`;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
       }
+
+      // Core
       ctx.save();
-      ctx.beginPath(); ctx.arc(x, y, nr, 0, Math.PI * 2);
-      ctx.fillStyle = baseColor; ctx.shadowColor = baseColor; ctx.shadowBlur = isHub ? 16 : 9; ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y, nr, 0, Math.PI * 2);
+      ctx.fillStyle   = baseColor;
+      ctx.shadowColor = baseColor;
+      ctx.shadowBlur  = isHub ? 16 : 9;
+      ctx.fill();
       ctx.restore();
+
+      // Bright centre
       ctx.save();
-      ctx.beginPath(); ctx.arc(x, y, nr * 0.38, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(x, y, nr * 0.38, 0, Math.PI * 2);
+      ctx.fillStyle   = '#fff';
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.restore();
     });
 
-    // 14 ── Vignette
+    // 8 ── Vignette
     const vig = ctx.createRadialGradient(W/2, H/2, H * 0.25, W/2, H/2, H * 0.82);
     vig.addColorStop(0, 'transparent');
     vig.addColorStop(1, 'rgba(2,10,20,0.72)');
-    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
 
-    // 15 ── Scan sweep
+    // 9 ── Scan sweep
     const sw   = ((t * 0.22) % 1) * H;
     const swig = ctx.createLinearGradient(0, sw - 70, 0, sw + 70);
     swig.addColorStop(0,   'transparent');
     swig.addColorStop(0.5, 'rgba(56,189,248,0.03)');
     swig.addColorStop(1,   'transparent');
-    ctx.fillStyle = swig; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = swig;
+    ctx.fillRect(0, 0, W, H);
 
     rafRef.current = requestAnimationFrame(draw);
   }, []);
