@@ -406,7 +406,7 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
             <div style={{ textAlign: 'center', marginBottom: 30 }}>
               <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f0f6ff', letterSpacing: '0.02em', marginBottom: 7 }}>Güvenli Giriş</h1>
               <p style={{ fontSize: '0.79rem', color: 'rgba(141,168,204,0.65)', lineHeight: 1.65 }}>
-                Ağ hız izleme platformuna erişmek için<br />kimlik bilgilerinizi girin
+                Yetkili personel girişi · Devam etmek için<br />kimlik doğrulaması gereklidir
               </p>
             </div>
 
