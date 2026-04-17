@@ -29,25 +29,34 @@ const mockRedis = {
   setex:     jest.fn().mockResolvedValue('OK'),
 };
 
-// Gerçek sorgu sırası:
-//   1. INSERT INTO WebhookLogs → { webhooklogid: N }
-//   2. SELECT CityID FROM Cities (findCityId) → { cityid: N } veya boş
-//   3. INSERT INTO VpnTypes ON CONFLICT  (yalnızca kayıtlı cihazda)
-//   4. INSERT INTO SpeedStats            (yalnızca kayıtlı cihazda)
-// UPDATE WebhookLogs (ParsedContext) try-catch ile sessizce geçilebilir → mock gerekmez
+// Gerçek sorgu sırası (kayıtlı cihaz):
+//   0. INSERT INTO WebhookLogs → { webhooklogid: N }
+//   1. UPDATE WebhookLogs SET ParsedContext (try-catch, sessiz)
+//   2. SELECT CityID FROM Cities (findCityId) → { cityid: N }
+//   3. INSERT INTO VpnTypes ON CONFLICT  
+//   4. INSERT INTO SpeedStats
+
+// Gerçek sorgu sırası (bilinmeyen cihaz):
+//   0. INSERT INTO WebhookLogs → { webhooklogid: N }
+//   1. UPDATE WebhookLogs SET ParsedContext (try-catch, sessiz)
+//   2. SELECT CityID FROM Cities → boş
+//   3. INSERT INTO SystemLogs (dbLog WARN)
 
 const knownDeviceMock = (cityId: number, vpnTypeId = 1) => {
   mockQuery
-    .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })     // INSERT WebhookLogs
-    .mockResolvedValueOnce({ rows: [{ cityid: cityId }] })       // SELECT CityID FROM Cities
-    .mockResolvedValueOnce({ rows: [{ vpntypeid: vpnTypeId }] }) // INSERT VpnTypes
-    .mockResolvedValueOnce({ rows: [] });                         // INSERT SpeedStats
+    .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })     // 0: INSERT WebhookLogs
+    .mockResolvedValueOnce({ rows: [] })                         // 1: UPDATE WebhookLogs ParsedContext
+    .mockResolvedValueOnce({ rows: [{ cityid: cityId }] })       // 2: SELECT CityID FROM Cities
+    .mockResolvedValueOnce({ rows: [{ vpntypeid: vpnTypeId }] }) // 3: INSERT VpnTypes
+    .mockResolvedValueOnce({ rows: [] });                         // 4: INSERT SpeedStats
 };
 
 const unknownDeviceMock = () => {
   mockQuery
-    .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] }) // INSERT WebhookLogs
-    .mockResolvedValueOnce({ rows: [] });                    // SELECT CityID FROM Cities → boş
+    .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] }) // 0: INSERT WebhookLogs
+    .mockResolvedValueOnce({ rows: [] })                    // 1: UPDATE WebhookLogs ParsedContext
+    .mockResolvedValueOnce({ rows: [] })                    // 2: SELECT CityID FROM Cities → boş
+    .mockResolvedValueOnce({ rows: [] });                   // 3: INSERT SystemLogs (dbLog WARN)
 };
 
 describe('POST /api/webhook — Cihaz Doğrulama', () => {

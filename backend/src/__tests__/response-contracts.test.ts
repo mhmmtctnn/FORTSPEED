@@ -230,10 +230,11 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
 
     it('response tüm webhook alanlarını içermeli', async () => {
       mockQuery
-        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })  // INSERT WebhookLogs
-        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })         // SELECT CityID FROM Cities
-        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })      // INSERT VpnTypes
-        .mockResolvedValueOnce({ rows: [] });                      // INSERT SpeedStats
+        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })  // 0: INSERT WebhookLogs
+        .mockResolvedValueOnce({ rows: [] })                      // 1: UPDATE WebhookLogs ParsedContext
+        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })         // 2: SELECT CityID FROM Cities
+        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })      // 3: INSERT VpnTypes
+        .mockResolvedValueOnce({ rows: [] });                      // 4: INSERT SpeedStats
 
       const res = await app.inject({
         method: 'POST',
@@ -250,10 +251,11 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
 
     it('webhook_stats nested object olmalı (total + today)', async () => {
       mockQuery
-        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })  // INSERT WebhookLogs
-        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })         // SELECT CityID FROM Cities
-        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })      // INSERT VpnTypes
-        .mockResolvedValueOnce({ rows: [] });                      // INSERT SpeedStats
+        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })  // 0: INSERT WebhookLogs
+        .mockResolvedValueOnce({ rows: [] })                      // 1: UPDATE WebhookLogs ParsedContext
+        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })         // 2: SELECT CityID FROM Cities
+        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })      // 3: INSERT VpnTypes
+        .mockResolvedValueOnce({ rows: [] });                      // 4: INSERT SpeedStats
 
       const res = await app.inject({
         method: 'POST',

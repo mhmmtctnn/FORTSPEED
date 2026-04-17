@@ -123,7 +123,9 @@ describe('API Endpoints', () => {
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });                          // DELETE Cities RETURNING
       const res = await app.inject({ method: 'DELETE', url: '/api/cities/1' });
       expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.body)).toEqual({ success: true });
+      const body = JSON.parse(res.body);
+      expect(body).toHaveProperty('success', true);
+      expect(body).toHaveProperty('deletedId');
     });
   });
 

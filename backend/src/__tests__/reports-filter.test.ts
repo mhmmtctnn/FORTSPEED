@@ -218,12 +218,18 @@ describe('Rapor Filtresi Testleri', () => {
     });
 
     const mockUpsertSuccess = () => {
-      // Actual flow: WebhookLogs INSERT → Cities SELECT → VpnTypes upsert → SpeedStats insert
+      // Actual flow:
+      //   0: INSERT WebhookLogs RETURNING webhooklogid
+      //   1: UPDATE WebhookLogs SET ParsedContext (try-catch, sessiz)
+      //   2: SELECT CityID FROM Cities (findCityId)
+      //   3: INSERT VpnTypes ON CONFLICT RETURNING vpntypeid
+      //   4: INSERT SpeedStats
       mockQuery
-        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] }) // INSERT WebhookLogs
-        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })       // SELECT CityID FROM Cities
-        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })    // INSERT VpnTypes ON CONFLICT
-        .mockResolvedValueOnce({ rows: [] });                    // INSERT SpeedStats
+        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] }) // 0: INSERT WebhookLogs
+        .mockResolvedValueOnce({ rows: [] })                    // 1: UPDATE WebhookLogs ParsedContext
+        .mockResolvedValueOnce({ rows: [{ cityid: 1 }] })       // 2: SELECT CityID FROM Cities
+        .mockResolvedValueOnce({ rows: [{ vpntypeid: 1 }] })    // 3: INSERT VpnTypes ON CONFLICT
+        .mockResolvedValueOnce({ rows: [] });                    // 4: INSERT SpeedStats
     };
 
     it('FortiGate CLI formatını doğru parse etmeli', async () => {
@@ -304,8 +310,8 @@ describe('Rapor Filtresi Testleri', () => {
       await app.inject(webhookBody(
         'HAMBURG-BK execute speed-test-ipsec METRO\nclient(recver): down_speed: 77 Mbps'
       ));
-      // call[0] = INSERT WebhookLogs, call[1] = SELECT CityID FROM Cities
-      const cityCall = mockQuery.mock.calls[1];
+      // call[0]=INSERT WHL, call[1]=UPDATE WHL, call[2]=SELECT Cities, call[3]=INSERT VpnTypes
+      const cityCall = mockQuery.mock.calls[2];
       expect(cityCall[0]).toMatch(/SELECT.*CityID.*FROM Cities/i);
       expect(cityCall[1]).toContain('HAMBURG-BK');
     });
@@ -315,8 +321,8 @@ describe('Rapor Filtresi Testleri', () => {
       await app.inject(webhookBody(
         'DORTMUND-BK execute speed-test-ipsec METRO\nclient(recver): down_speed: 55 Mbps'
       ));
-      // call[0] = INSERT WebhookLogs, call[1] = SELECT Cities, call[2] = INSERT VpnTypes
-      const vpnCall = mockQuery.mock.calls[2];
+      // call[0]=INSERT WHL, call[1]=UPDATE WHL, call[2]=SELECT Cities, call[3]=INSERT VpnTypes
+      const vpnCall = mockQuery.mock.calls[3];
       expect(vpnCall[0]).toMatch(/INSERT INTO VpnTypes/i);
     });
 
