@@ -238,17 +238,29 @@ export function parseSpeedTestBody(body: string) {
   // ── 7. FortiGate bandwidth/throughput fallback: "bandwidth: X Mbps"
   if (!upValue) {
     const l = lines.find(ln => /\bthroughput\b|\bbandwidth\b/i.test(ln));
-    if (l) { const m = l.match(/([0-9.,]+)\s*(Gbps|Mbps|Kbps|bps)/i); if (m) { upValue = m[1]; upUnit = m[2]; } }
+    if (l) {
+      // Not: alternation + \s* kombinasyonu backtrack riski oluşturur
+      // indexOf ile unit boundary'yi belirleyerek daha güvenli parse
+      const numM = l.match(/([0-9.,]+)[ \t]*(Gbps|Mbps|Kbps|bps)/i);
+      if (numM) { upValue = numM[1]; upUnit = numM[2]; }
+    }
   }
 
   // ── 8. Turkish label fallback (server.ps1 lines 84-98)
   if (!deviceName) {
     const dl = lines.find(l => /^\s*Cihaz Ad[ıi]\s*:/i.test(l));
-    if (dl) { const m = dl.match(/:\s*(.+)$/); if (m) deviceName = m[1].trim(); }
+    if (dl) {
+      // Not: (.+)$ backtrack yapabilir — indexOf ile güvenli parse
+      const colonIdx = dl.indexOf(':');
+      if (colonIdx !== -1) deviceName = dl.slice(colonIdx + 1).trim() || null;
+    }
   }
   if (!vpnName) {
     const vl = lines.find(l => /^\s*VPN Ad[ıi]\s*:/i.test(l));
-    if (vl) { const m = vl.match(/:\s*(.+)$/); if (m) vpnName = m[1].trim(); }
+    if (vl) {
+      const colonIdx = vl.indexOf(':');
+      if (colonIdx !== -1) vpnName = vl.slice(colonIdx + 1).trim() || null;
+    }
   }
   if (!upValue) {
     const ul = lines.find(l => /^\s*Upload H[ıi]z[ıi]\s*:/i.test(l));

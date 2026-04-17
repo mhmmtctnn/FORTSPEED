@@ -121,7 +121,7 @@ tr:hover td{background:#334155}
   function api(p){return fetch(BASE+p).then(function(r){return r.json();})}
   function sc(v){return v>=50?'s-ok':v>=10?'s-mid':'s-bad'}
   function fs(v){return v!=null?v.toFixed(1):'-'}
-  function esc(s){var d=document.createElement('div');d.textContent=s||'-';return d.innerHTML}
+  function esc(s){if(!s&&s!==0)return'-';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 
   function loadKPI(){
     Promise.all([api('/api/reports/summary'),api('/api/webhook/stats')]).then(function(res){
