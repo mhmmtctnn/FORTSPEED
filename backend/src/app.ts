@@ -22,20 +22,18 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   fastify.register(cors, { origin: true });
 
   // Rate limiting — DoS/brute-force koruması
-  // Test modunda devre dışı bırakılır
-  if (!opts.testing) {
-    fastify.register(rateLimit, {
-      global: true,
-      max: 300,           // 5 dakikada 300 istek (tüm endpoint'ler)
-      timeWindow: '5 minutes',
-      allowList: ['127.0.0.1', '::1'], // localhost'tan gelen isteklere limit yok
-      errorResponseBuilder: (_req, context) => ({
-        status: 'Rate limit exceeded',
-        message: `Too many requests. Retry after ${Math.ceil(context.ttl / 1000)}s`,
-        retry_after: Math.ceil(context.ttl / 1000),
-      }),
-    });
-  }
+  // Test modunda plugin yine kaydedilir (CodeQL için), ama limit çok yüksektir
+  fastify.register(rateLimit, {
+    global: true,
+    max: opts.testing ? 100000 : 300,   // 5 dakikada normalde 300 istek, testlerde 100000
+    timeWindow: '5 minutes',
+    allowList: ['127.0.0.1', '::1'], // localhost'tan gelen isteklere limit yok
+    errorResponseBuilder: (_req, context) => ({
+      status: 'Rate limit exceeded',
+      message: `Too many requests. Retry after ${Math.ceil(context.ttl / 1000)}s`,
+      retry_after: Math.ceil(context.ttl / 1000),
+    }),
+  });
 
   // ITAI Hub integration — SSO, trace ID, cookie config
   await registerItaiMiddleware(fastify, { itaiMode: opts.itaiMode });
@@ -505,9 +503,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   // Webhook route'ları için explicit rate-limit (CodeQL: missing rate limiting)
   // Global limit zaten aktif; burada webhook endpoint'leri için özel sınır tanımlanıyor
-  const webhookRateLimit = opts.testing
-    ? undefined
-    : { max: 60, timeWindow: '1 minute' }; // FortiGate'den dakikada 60 webhook yeterli
+  const webhookRateLimit = { max: opts.testing ? 100000 : 60, timeWindow: '1 minute' }; // FortiGate'den dakikada 60 webhook yeterli
 
   fastify.post('/api/webhook', { config: { rateLimit: webhookRateLimit } }, webhookHandler);
   fastify.post('/webhook',     { config: { rateLimit: webhookRateLimit } }, webhookHandler);
@@ -651,7 +647,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   // ─── 1. Legacy JSON Webhook (backward compat) ───────────────────────────────
-  fastify.post('/webhook/speedtest', { config: { rateLimit: opts.testing ? undefined : { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+  fastify.post('/webhook/speedtest', { config: { rateLimit: { max: opts.testing ? 100000 : 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { cityId, vpnTypeId, deviceName, downloadSpeed, uploadSpeed, latency, uploadStatus, downloadStatus } = request.body as any;
     const query = `
       INSERT INTO SpeedStats (CityID, VpnTypeID, DeviceName, DownloadSpeed, UploadSpeed, Latency, UploadStatus, DownloadStatus, MeasuredAt)
@@ -1349,7 +1345,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   /** Manuel SDWAN veri enjeksiyonu — FortiGate webhook olmadan test için.
    *  Body: { deviceName: string, members: [{seqId, interfaceName, cost?}], activeMemberSeq?: number } */
-  fastify.post('/api/sdwan/inject', { config: { rateLimit: opts.testing ? undefined : { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+  fastify.post('/api/sdwan/inject', { config: { rateLimit: { max: opts.testing ? 100000 : 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as any;
     const { deviceName, members, activeMemberSeq } = body || {};
     if (!deviceName || !Array.isArray(members) || members.length === 0) {
