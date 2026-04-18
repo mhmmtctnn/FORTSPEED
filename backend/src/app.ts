@@ -15,6 +15,7 @@ import { registerSdwanRoutes } from './routes/sdwan';
 import { registerWebhookRoutes } from './routes/webhook';
 import { createDbLog } from './helpers/db-log';
 import { createFindCityId } from './helpers/find-city-id';
+import { registerMigrations } from './routes/migrations';
 
 export interface AppOptions {
   testing?: boolean;
@@ -103,111 +104,8 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // SDWAN — routes/sdwan.ts
   await registerSdwanRoutes(fastify, redis, findCityId, opts.testing ?? false);
 
-  const purgeOldLogs = async () => {
-    try {
-      const r1 = await fastify.pg.query(`DELETE FROM SystemLogs  WHERE CreatedAt < NOW() - INTERVAL '30 days'`);
-      const r2 = await fastify.pg.query(`DELETE FROM WebhookLogs WHERE CreatedAt < NOW() - INTERVAL '30 days'`);
-      if ((r1.rowCount ?? 0) > 0 || (r2.rowCount ?? 0) > 0) {
-        fastify.log.info(`Log temizleme: ${r1.rowCount ?? 0} sistem + ${r2.rowCount ?? 0} webhook logu silindi (>30 gün)`);
-      }
-    } catch (e) { fastify.log.error(e, 'Log purge hatası'); }
-  };
-
-  fastify.addHook('onReady', async function () {
-    // ── Auto-migration: eksik kolonları ekle ──
-    try {
-      await fastify.pg.query(`
-        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS DeviceName VARCHAR(100);
-      `);
-      await fastify.pg.query(`
-        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS IsStarlink BOOLEAN NOT NULL DEFAULT FALSE;
-      `);
-      await fastify.pg.query(`
-        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS SatelliteType VARCHAR(50) DEFAULT NULL;
-      `);
-      await fastify.pg.query(`
-        UPDATE Cities SET SatelliteType = 'starlink' WHERE IsStarlink = TRUE AND SatelliteType IS NULL;
-      `);
-      await fastify.pg.query(`
-        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS TerrestrialType VARCHAR(50) DEFAULT NULL;
-      `);
-      await fastify.pg.query(`
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_cities_devicename
-          ON Cities (UPPER(DeviceName))
-          WHERE DeviceName IS NOT NULL AND DeviceName <> '';
-      `);
-      // Tags tablosu ve Cities.MissionTags kolonu
-      await fastify.pg.query(`
-        CREATE TABLE IF NOT EXISTS Tags (
-          ID        SERIAL PRIMARY KEY,
-          Name      VARCHAR(100) NOT NULL,
-          Color     VARCHAR(20)  NOT NULL DEFAULT '#38bdf8',
-          Icon      VARCHAR(20)  NOT NULL DEFAULT '🏷️',
-          SortOrder INT          NOT NULL DEFAULT 0
-        );
-      `);
-      await fastify.pg.query(`
-        ALTER TABLE Cities ADD COLUMN IF NOT EXISTS MissionTags TEXT DEFAULT NULL;
-      `);
-      fastify.log.info('Migration OK: Cities.DeviceName + SatelliteType + Tags kolonları hazır.');
-    } catch (err) {
-      fastify.log.error(err, 'Migration failed: Cities.DeviceName');
-    }
-    // ── SDWAN tabloları (her ifadeyi ayrı query ile çalıştır) ──
-    try {
-      await fastify.pg.query(`
-        CREATE TABLE IF NOT EXISTS SdwanMembers (
-          ID        SERIAL  PRIMARY KEY,
-          CityID    INTEGER REFERENCES Cities(CityID) ON DELETE CASCADE,
-          SeqID     INTEGER NOT NULL,
-          InterfaceName VARCHAR(100) NOT NULL,
-          Cost      INTEGER,
-          UpdatedAt TIMESTAMPTZ DEFAULT NOW(),
-          UNIQUE (CityID, SeqID)
-        )
-      `);
-      await fastify.pg.query(`
-        CREATE TABLE IF NOT EXISTS SdwanStatus (
-          CityID          INTEGER PRIMARY KEY REFERENCES Cities(CityID) ON DELETE CASCADE,
-          ActiveSeqID     INTEGER,
-          ActiveInterface VARCHAR(100),
-          UpdatedAt       TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await fastify.pg.query(`
-        CREATE TABLE IF NOT EXISTS SdwanHistory (
-          ID              SERIAL PRIMARY KEY,
-          CityID          INTEGER REFERENCES Cities(CityID) ON DELETE CASCADE,
-          FromInterface   VARCHAR(100),
-          ToInterface     VARCHAR(100),
-          ActiveSeqID     INTEGER,
-          RecordedAt      TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await fastify.pg.query(`
-        CREATE INDEX IF NOT EXISTS idx_sdwanhistory_city ON SdwanHistory (CityID, RecordedAt DESC)
-      `);
-      fastify.log.info('Migration OK: SdwanMembers + SdwanStatus + SdwanHistory tabloları hazır.');
-    } catch (err) {
-      fastify.log.error(err, 'Migration failed: SDWAN tables');
-    }
-    // ── Log temizleme — pg hazır olduktan sonra çalıştır ──
-    if (!opts.testing) {
-      purgeOldLogs();
-      setInterval(purgeOldLogs, 24 * 60 * 60 * 1000);
-    }
-    // ── Index doğrulama ──
-    try {
-      await fastify.pg.query(`
-        CREATE INDEX IF NOT EXISTS idx_speedstats_perf ON SpeedStats(MeasuredAt DESC, CityID, VpnTypeID);
-        CREATE INDEX IF NOT EXISTS idx_speedstats_dl ON SpeedStats(DownloadSpeed DESC);
-        CREATE INDEX IF NOT EXISTS idx_speedstats_ul ON SpeedStats(UploadSpeed DESC);
-      `);
-      fastify.log.info('PostgreSQL SpeedStats indexing verification complete.');
-    } catch (err) {
-      fastify.log.error(err, 'DB Index creation failed');
-    }
-  });
+  // Migrations + onReady hook — routes/migrations.ts
+  registerMigrations(fastify, opts.testing ?? false);
 
   return fastify;
 }
