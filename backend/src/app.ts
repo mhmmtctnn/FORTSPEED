@@ -5,7 +5,6 @@ import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 import Redis from 'ioredis';
 import { registerItaiMiddleware } from './middleware/itai';
-import { convertToMbps, resolveVpnType, parseSpeedTestBody, detectPayloadType, parseSdwanMembers, parseSdwanStatus, parseSdwanJson } from './helpers/webhook-parser';
 import { registerTagRoutes } from './routes/tags';
 import { registerCityRoutes } from './routes/cities';
 import { registerLogRoutes } from './routes/logs';
@@ -75,7 +74,6 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       });
     });
   }
-
 
   fastify.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => done(null, body));
   fastify.addContentTypeParser('*', { parseAs: 'string' }, (_req, body, done) => done(null, body));
