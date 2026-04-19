@@ -17,4 +17,4 @@
 export { useT } from './useT';
 export { useLanguage, LanguageProvider } from './LanguageContext';
 export type { Locale } from './translations';
-export { LOCALE_FLAGS, LOCALE_LABELS } from './translations';
+export { LOCALE_FLAGS, LOCALE_LABELS, LOCALE_BCP47 } from './translations';

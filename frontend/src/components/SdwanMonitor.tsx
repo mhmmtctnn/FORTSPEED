@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { GitBranch, RefreshCw, Search, X, Wifi, Signal, Activity, History, ArrowRight, Stethoscope, CheckCircle, XCircle, TrendingUp } from 'lucide-react';
 import { SdwanRow, SdwanHistoryEntry } from '../types';
-import { useT } from '../i18n';
+import { useT, useLanguage, LOCALE_BCP47 } from '../i18n';
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, bcp47: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60)    return `${s}s önce`;
-  if (s < 3600)  return `${Math.floor(s / 60)}dk önce`;
-  if (s < 86400) return `${Math.floor(s / 3600)}sa önce`;
-  return new Date(iso).toLocaleDateString('tr-TR');
+  if (s < 60) return new Intl.RelativeTimeFormat(bcp47, { numeric: 'auto', style: 'short' }).format(-s, 'second');
+  if (s < 3600) return new Intl.RelativeTimeFormat(bcp47, { numeric: 'always', style: 'short' }).format(-Math.floor(s / 60), 'minute');
+  if (s < 86400) return new Intl.RelativeTimeFormat(bcp47, { numeric: 'always', style: 'short' }).format(-Math.floor(s / 3600), 'hour');
+  return new Date(iso).toLocaleDateString(bcp47);
 }
 
 /** Interface adından VPN tipini tahmin et */
@@ -57,8 +57,8 @@ function typeIcon(t: 'GSM' | 'HUB' | 'METRO' | null, size = 9, color?: string) {
   return <Wifi {...props} />;
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+function formatDateTime(iso: string, bcp47: string): string {
+  return new Date(iso).toLocaleString(bcp47, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 interface Props {
@@ -67,6 +67,8 @@ interface Props {
 
 export const SdwanMonitor = ({ initialData = [] }: Props) => {
   const t = useT();
+  const { locale } = useLanguage();
+  const bcp47 = LOCALE_BCP47[locale];
   const [rows, setRows]           = useState<SdwanRow[]>(initialData);
   const [history, setHistory]     = useState<SdwanHistoryEntry[]>([]);
   const [loading, setLoading]     = useState(false);
@@ -144,7 +146,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
               <GitBranch size={22} color="var(--amber)" /> {t('sdwan_title')}
             </h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 2 }}>
-              Son güncelleme: {refresh.toLocaleTimeString('tr-TR')} · her 15s otomatik
+              {t('last_update')}: {refresh.toLocaleTimeString(bcp47)} · {t('auto_refresh_15s')}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -227,19 +229,19 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
             {history.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '60px 0', color: 'var(--text-muted)' }}>
                 <History size={32} style={{ opacity: 0.2 }} />
-                <p style={{ fontSize: 13 }}>Henüz üye geçişi kaydedilmedi</p>
-                <p style={{ fontSize: 11 }}>SDWAN aktif üye değiştiğinde burada görünecek</p>
+                <p style={{ fontSize: 13 }}>{t('sdwan_no_failover')}</p>
+                <p style={{ fontSize: 11 }}>{t('sdwan_failover_note')}</p>
               </div>
             ) : (
               <div className="glass-card" style={{ overflow: 'hidden' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th style={{ width: 140 }}>Zaman</th>
-                      <th>Misyon</th>
-                      <th>Önceki Interface</th>
+                      <th style={{ width: 140 }}>{t('col_time')}</th>
+                      <th>{t('report_missions')}</th>
+                      <th>{t('col_prev_interface')}</th>
                       <th style={{ width: 24 }}></th>
-                      <th>Yeni Interface</th>
+                      <th>{t('col_new_interface')}</th>
                       <th style={{ width: 60, textAlign: 'right' }}>Seq</th>
                     </tr>
                   </thead>
@@ -258,7 +260,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                         return (
                           <tr key={h.id}>
                             <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                              {formatDateTime(h.recorded_at)}
+                              {formatDateTime(h.recorded_at, bcp47)}
                             </td>
                             <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{h.city_name}</td>
                             <td>
@@ -315,7 +317,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
             position: 'sticky', top: 0, zIndex: 10,
             background: 'var(--bg-base)',
           }}>
-            <span>Misyon</span><span>Aktif Interface</span><span>Üyeler</span><span style={{ textAlign: 'right' }}>Güncelleme</span>
+            <span>{t('report_missions')}</span><span>{t('active_interface')}</span><span>{t('members')}</span><span style={{ textAlign: 'right' }}>{t('col_updated')}</span>
           </div>
         )}
 
@@ -387,7 +389,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
 
                   {/* Zaman */}
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {row.updated_at ? timeAgo(row.updated_at) : '—'}
+                    {row.updated_at ? timeAgo(row.updated_at, bcp47) : '—'}
                   </span>
                 </div>
 
@@ -437,7 +439,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                     </div>
                     {row.updated_at && (
                       <p style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)' }}>
-                        Son webhook: {new Date(row.updated_at).toLocaleString('tr-TR')}
+                        {t('last_webhook')}: {new Date(row.updated_at).toLocaleString(bcp47)}
                       </p>
                     )}
 
@@ -457,7 +459,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                               return (
                                 <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 12 }}>
                                   <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 110, whiteSpace: 'nowrap' }}>
-                                    {formatDateTime(h.recorded_at)}
+                                    {formatDateTime(h.recorded_at, bcp47)}
                                   </span>
                                   {h.from_interface ? (
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 3, background: typeBg(fromType), color: typeColor(fromType), border: `1px solid ${typeBorder(fromType)}`, fontSize: 11, fontWeight: 600 }}>
@@ -504,7 +506,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                   opacity: 0.6,
                 }}>
                   <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 600 }}>{row.city_name}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Henüz webhook gelmedi</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('sdwan_no_webhook')}</span>
                 </div>
               ))}
             </div>
@@ -582,22 +584,22 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                 {[
                   {
-                    label: 'Toplam Misyon', val: totalMissions, icon: <GitBranch size={16} color="var(--accent)" />,
-                    sub: `${activeMissions} SDWAN aktif`, color: 'var(--accent)',
+                    label: t('total_missions'), val: totalMissions, icon: <GitBranch size={16} color="var(--accent)" />,
+                    sub: t('sdwan_active_count').replace('{n}', String(activeMissions)), color: 'var(--accent)',
                   },
                   {
-                    label: 'SDWAN Kapsama', val: `${totalMissions ? Math.round((activeMissions / totalMissions) * 100) : 0}%`,
+                    label: t('sdwan_coverage'), val: `${totalMissions ? Math.round((activeMissions / totalMissions) * 100) : 0}%`,
                     icon: activeMissions === totalMissions ? <CheckCircle size={16} color="var(--green)" /> : <XCircle size={16} color="var(--amber)" />,
-                    sub: `${activeMissions} / ${totalMissions} misyon`, color: activeMissions === totalMissions ? 'var(--green)' : 'var(--amber)',
+                    sub: t('sdwan_mission_count').replace('{n}', String(activeMissions)).replace('{total}', String(totalMissions)), color: activeMissions === totalMissions ? 'var(--green)' : 'var(--amber)',
                   },
                   {
-                    label: 'Toplam Failover', val: totalFailovers, icon: <TrendingUp size={16} color="var(--purple)" />,
-                    sub: 'tüm zamanlar', color: 'var(--purple)',
+                    label: t('sdwan_total_failovers'), val: totalFailovers, icon: <TrendingUp size={16} color="var(--purple)" />,
+                    sub: t('sdwan_all_time'), color: 'var(--purple)',
                   },
                   {
-                    label: 'Son Geçiş', val: lastFailover ? new Date(lastFailover.recorded_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—',
+                    label: t('sdwan_last_failover'), val: lastFailover ? new Date(lastFailover.recorded_at).toLocaleTimeString(bcp47, { hour: '2-digit', minute: '2-digit' }) : '—',
                     icon: <History size={16} color="var(--amber)" />,
-                    sub: lastFailover ? new Date(lastFailover.recorded_at).toLocaleDateString('tr-TR') : 'Geçiş yok', color: 'var(--amber)',
+                    sub: lastFailover ? new Date(lastFailover.recorded_at).toLocaleDateString(bcp47) : t('sdwan_no_failover_short'), color: 'var(--amber)',
                   },
                 ].map(c => (
                   <div key={c.label} className="glass-card" style={{ padding: '16px 18px' }}>
@@ -617,7 +619,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                   <Signal size={14} /> Aktif Interface Tipi Dağılımı
                 </div>
                 {activeMissions === 0 ? (
-                  <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Henüz SDWAN verisi yok</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{t('no_sdwan_data')}</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {Object.entries(typeDist).filter(([, v]) => v > 0).map(([name, count]) => {
@@ -681,7 +683,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                     const barH    = d.count > 0 ? Math.max(4, Math.round((d.count / dailyMax) * 64)) : 4;
                     const dayDate = new Date(d.day + 'T12:00:00');
                     const dayName = DAY_NAMES[dayDate.getDay()];
-                    const dateStr = dayDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
+                    const dateStr = dayDate.toLocaleDateString(bcp47, { day: '2-digit', month: '2-digit' });
                     return (
                       <div key={d.day} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
                         <div style={{ fontSize: isPeak ? 11 : 10, fontWeight: isPeak ? 800 : 600, fontFamily: 'monospace', color: isPeak ? '#fbbf24' : d.count === 0 ? 'var(--border)' : 'var(--text-secondary)' }}>
@@ -725,8 +727,8 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
               {topMissions.length > 0 && (
                 <div className="glass-card" style={{ padding: 20 }}>
                   <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <TrendingUp size={14} /> En Çok Failover Yapan Misyonlar
-                    <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)' }}>tüm zamanlar</span>
+                    <TrendingUp size={14} /> {t('sdwan_top_failovers')}
+                    <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)' }}>{t('sdwan_all_time')}</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {topMissions.map(([name, count], idx) => {
@@ -758,8 +760,8 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
               {totalFailovers === 0 && (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
                   <History size={32} style={{ opacity: 0.15, marginBottom: 10 }} />
-                  <p style={{ fontSize: 13 }}>Henüz failover geçmişi yok</p>
-                  <p style={{ fontSize: 11, marginTop: 4 }}>SDWAN aktif üye değişimlerinde bu sayfa dolmaya başlayacak</p>
+                  <p style={{ fontSize: 13 }}>{t('sdwan_no_history')}</p>
+                  <p style={{ fontSize: 11, marginTop: 4 }}>{t('sdwan_failover_note')}</p>
                 </div>
               )}
             </div>

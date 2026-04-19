@@ -12,7 +12,7 @@ const KPI_ICONS = {
   clock:    <Clock size={20} />,
 };
 import { Mission, ActivityEntry, fmt, getBestDownload, getBestUpload } from '../types';
-import { useT } from '../i18n';
+import { useT, useLanguage, LOCALE_BCP47 } from '../i18n';
 
 export interface DateRange { startDate: string; endDate: string; }
 
@@ -44,26 +44,29 @@ const vpnColor = (vpnType: string) => VPN_COLOR[vpnType?.toUpperCase()] ?? '#38b
 
 const DATA_MIN = '2025-08-19'; // SpeedStats'daki en erken kayıt
 
-function validateRange(r: DateRange): string {
-  const t = today();
+function validateRange(r: DateRange, translate: (k: string) => string, bcp47: string): string {
+  const tod = today();
   if (r.startDate && r.endDate) {
-    if (r.startDate > r.endDate) return 'Başlangıç tarihi, bitiş tarihinden sonra olamaz.';
-    if (r.startDate > t) return 'Başlangıç tarihi bugünden sonra olamaz.';
-    if (r.endDate > t) return 'Bitiş tarihi bugünden sonra olamaz.';
-    if (r.startDate < DATA_MIN) return `Veri en erken ${new Date(DATA_MIN).toLocaleDateString('tr-TR')} tarihinden itibaren mevcut.`;
+    if (r.startDate > r.endDate) return translate('date_start_after_end');
+    if (r.startDate > tod) return translate('date_start_future');
+    if (r.endDate > tod) return translate('date_end_future');
+    if (r.startDate < DATA_MIN)
+      return translate('date_min_warning').replace('{date}', new Date(DATA_MIN).toLocaleDateString(bcp47));
   } else if (r.startDate && !r.endDate) {
-    return 'Bitiş tarihini de seçin.';
+    return translate('date_select_end');
   } else if (!r.startDate && r.endDate) {
-    return 'Başlangıç tarihini de seçin.';
+    return translate('date_select_start');
   }
   return '';
 }
 
 export default function Dashboard({ missions, summary, continentReports, vpntypeReports, activityFeed, onLoadDashboard }: Props) {
   const t = useT();
+  const { locale } = useLanguage();
+  const bcp47 = LOCALE_BCP47[locale];
   const [range, setRange] = useState<DateRange>({ startDate: daysAgo(30), endDate: today() });
   const [topMetric, setTopMetric] = useState<'download'|'upload'>('download');
-  const validationErr = useMemo(() => validateRange(range), [range]);
+  const validationErr = useMemo(() => validateRange(range, t, bcp47), [range, t, bcp47]);
   const isValid = validationErr === '';
 
   const handleApply = () => {
@@ -109,7 +112,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
               {t('dashboard_title')}
             </h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px' }}>
-              {summary?.last_update_time ? `Son güncelleme: ${new Date(String(summary.last_update_time)).toLocaleString('tr-TR')}` : 'Gerçek zamanlı izleme'}
+              {summary?.last_update_time ? `${t('last_update')}: ${new Date(String(summary.last_update_time)).toLocaleString(bcp47)}` : t('realtime_monitoring')}
             </p>
           </div>
           <button className="btn btn-primary" onClick={handleApply} disabled={!isValid}>

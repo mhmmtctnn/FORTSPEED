@@ -1,5 +1,12 @@
 export type Locale = 'tr' | 'en' | 'fr' | 'ar';
 
+export const LOCALE_BCP47: Record<Locale, string> = {
+  tr: 'tr-TR',
+  en: 'en-GB',
+  fr: 'fr-FR',
+  ar: 'ar-SA',
+};
+
 export const LOCALE_LABELS: Record<Locale, string> = {
   tr: 'Türkçe',
   en: 'English',
@@ -184,6 +191,64 @@ const translations = {
     settings_logo_custom: 'Özel logo',
     btn_upload:        'Yükle',
     btn_remove:        'Kaldır',
+
+    // ── Tarih doğrulama ──
+    date_start_after_end: 'Başlangıç tarihi bitiş tarihinden sonra olamaz.',
+    date_start_future:    'Başlangıç tarihi bugünden sonra olamaz.',
+    date_end_future:      'Bitiş tarihi bugünden sonra olamaz.',
+    date_future_error:    'Gelecek tarih seçilemez.',
+    date_min_warning:     'Veri en erken {date} tarihinden itibaren mevcut.',
+    date_select_end:      'Bitiş tarihini de seçin.',
+    date_select_start:    'Başlangıç tarihini de seçin.',
+
+    // ── Durum çubuğu ──
+    realtime_monitoring:  'Gerçek zamanlı izleme',
+    auto_refresh_15s:     'her 15s otomatik',
+    last_webhook:         'Son webhook',
+
+    // ── PDF dışa aktarma ──
+    pdf_title:            'FORTSPEED - Ağ Performans Raporu',
+    pdf_date_label:       'Tarih',
+
+    // ── Tablo sütunları ──
+    col_time:             'Zaman',
+    col_link:             'Hat',
+    col_status:           'Durum',
+    col_level:            'Seviye',
+    col_message:          'Mesaj',
+    col_prev_interface:   'Önceki Interface',
+    col_new_interface:    'Yeni Interface',
+
+    // ── SDWAN ──
+    sdwan_no_failover:      'Henüz üye geçişi kaydedilmedi',
+    sdwan_failover_note:    'SDWAN aktif üye değiştiğinde burada görünecek',
+    sdwan_no_failover_short: 'Geçiş yok',
+    sdwan_coverage:         'SDWAN Kapsama',
+    sdwan_total_failovers:  'Toplam Failover',
+    sdwan_last_failover:    'Son Geçiş',
+    sdwan_all_time:         'tüm zamanlar',
+
+    // ── Hızlı tarih seçimi ──
+    quick_today: 'Bugün',
+    quick_7d:    '7 Gün',
+    quick_30d:   '30 Gün',
+    quick_3m:    '3 Ay',
+
+    // ── Zaman birimleri ──
+    time_unit_min:  'dk',
+    time_unit_hour: 'sa',
+
+    // ── Tanı paneli ──
+    diag_last_success_test: 'Son Başarılı Hız Testi',
+    diag_recent_stats:      'Son 20 SpeedStats Kaydı',
+
+    // ── SDWAN ek ──
+    col_updated:           'Güncelleme',
+    sdwan_no_webhook:      'Henüz webhook gelmedi',
+    sdwan_top_failovers:   'En Çok Failover Yapan Misyonlar',
+    sdwan_no_history:      'Henüz failover geçmişi yok',
+    sdwan_active_count:    '{n} SDWAN aktif',
+    sdwan_mission_count:   '{n} / {total} misyon',
   },
 
   en: {
@@ -355,6 +420,64 @@ const translations = {
     settings_logo_custom: 'Custom logo',
     btn_upload:        'Upload',
     btn_remove:        'Remove',
+
+    // ── Date validation ──
+    date_start_after_end: 'Start date cannot be after end date.',
+    date_start_future:    'Start date cannot be in the future.',
+    date_end_future:      'End date cannot be in the future.',
+    date_future_error:    'Future date is not allowed.',
+    date_min_warning:     'Data is available from {date} onwards.',
+    date_select_end:      'Please also select an end date.',
+    date_select_start:    'Please also select a start date.',
+
+    // ── Status bar ──
+    realtime_monitoring:  'Real-time monitoring',
+    auto_refresh_15s:     'auto every 15s',
+    last_webhook:         'Last webhook',
+
+    // ── PDF export ──
+    pdf_title:            'FORTSPEED - Network Performance Report',
+    pdf_date_label:       'Date',
+
+    // ── Table columns ──
+    col_time:             'Time',
+    col_link:             'Link',
+    col_status:           'Status',
+    col_level:            'Level',
+    col_message:          'Message',
+    col_prev_interface:   'Previous Interface',
+    col_new_interface:    'New Interface',
+
+    // ── SDWAN ──
+    sdwan_no_failover:      'No failover events recorded yet',
+    sdwan_failover_note:    'Will appear here when SDWAN active member changes',
+    sdwan_no_failover_short: 'No failover',
+    sdwan_coverage:         'SDWAN Coverage',
+    sdwan_total_failovers:  'Total Failovers',
+    sdwan_last_failover:    'Last Failover',
+    sdwan_all_time:         'all time',
+
+    // ── Quick date ──
+    quick_today: 'Today',
+    quick_7d:    '7 Days',
+    quick_30d:   '30 Days',
+    quick_3m:    '3 Months',
+
+    // ── Time units ──
+    time_unit_min:  'min',
+    time_unit_hour: 'h',
+
+    // ── Diagnostics ──
+    diag_last_success_test: 'Last Successful Speed Test',
+    diag_recent_stats:      'Recent 20 SpeedStats Records',
+
+    // ── SDWAN extra ──
+    col_updated:           'Updated',
+    sdwan_no_webhook:      'No webhook received yet',
+    sdwan_top_failovers:   'Top Failover Missions',
+    sdwan_no_history:      'No failover history yet',
+    sdwan_active_count:    '{n} SDWAN active',
+    sdwan_mission_count:   '{n} / {total} missions',
   },
 
   fr: {
@@ -526,6 +649,64 @@ const translations = {
     settings_logo_custom: 'Logo personnalisé',
     btn_upload:        'Charger',
     btn_remove:        'Supprimer',
+
+    // ── Validation des dates ──
+    date_start_after_end: 'La date de début ne peut pas être après la date de fin.',
+    date_start_future:    'La date de début ne peut pas être dans le futur.',
+    date_end_future:      'La date de fin ne peut pas être dans le futur.',
+    date_future_error:    'Les dates futures ne sont pas autorisées.',
+    date_min_warning:     'Les données sont disponibles à partir du {date}.',
+    date_select_end:      'Veuillez également sélectionner une date de fin.',
+    date_select_start:    'Veuillez également sélectionner une date de début.',
+
+    // ── Barre de statut ──
+    realtime_monitoring:  'Surveillance en temps réel',
+    auto_refresh_15s:     'auto toutes les 15s',
+    last_webhook:         'Dernier webhook',
+
+    // ── Export PDF ──
+    pdf_title:            'FORTSPEED - Rapport de performances réseau',
+    pdf_date_label:       'Date',
+
+    // ── Colonnes de tableau ──
+    col_time:             'Heure',
+    col_link:             'Lien',
+    col_status:           'Statut',
+    col_level:            'Niveau',
+    col_message:          'Message',
+    col_prev_interface:   'Interface précédente',
+    col_new_interface:    'Nouvelle interface',
+
+    // ── SDWAN ──
+    sdwan_no_failover:      'Aucun basculement enregistré',
+    sdwan_failover_note:    "Apparaîtra ici lorsque le membre actif SDWAN change",
+    sdwan_no_failover_short: 'Aucun basculement',
+    sdwan_coverage:         'Couverture SDWAN',
+    sdwan_total_failovers:  'Total basculements',
+    sdwan_last_failover:    'Dernier basculement',
+    sdwan_all_time:         'depuis toujours',
+
+    // ── Date rapide ──
+    quick_today: "Aujourd'hui",
+    quick_7d:    '7 jours',
+    quick_30d:   '30 jours',
+    quick_3m:    '3 mois',
+
+    // ── Unités de temps ──
+    time_unit_min:  'min',
+    time_unit_hour: 'h',
+
+    // ── Diagnostics ──
+    diag_last_success_test: 'Dernier test de vitesse réussi',
+    diag_recent_stats:      '20 derniers enregistrements SpeedStats',
+
+    // ── SDWAN extra ──
+    col_updated:           'Mise à jour',
+    sdwan_no_webhook:      'Aucun webhook reçu',
+    sdwan_top_failovers:   'Missions avec le plus de basculements',
+    sdwan_no_history:      "Pas encore d'historique de basculement",
+    sdwan_active_count:    '{n} SDWAN actif',
+    sdwan_mission_count:   '{n} / {total} missions',
   },
 
   ar: {
@@ -697,6 +878,64 @@ const translations = {
     settings_logo_custom: 'شعار مخصص',
     btn_upload:        'رفع',
     btn_remove:        'إزالة',
+
+    // ── التحقق من التاريخ ──
+    date_start_after_end: 'لا يمكن أن يكون تاريخ البدء بعد تاريخ الانتهاء.',
+    date_start_future:    'لا يمكن أن يكون تاريخ البدء في المستقبل.',
+    date_end_future:      'لا يمكن أن يكون تاريخ الانتهاء في المستقبل.',
+    date_future_error:    'التواريخ المستقبلية غير مسموح بها.',
+    date_min_warning:     'البيانات متاحة ابتداءً من {date}.',
+    date_select_end:      'يرجى اختيار تاريخ الانتهاء أيضًا.',
+    date_select_start:    'يرجى اختيار تاريخ البدء أيضًا.',
+
+    // ── شريط الحالة ──
+    realtime_monitoring:  'مراقبة في الوقت الفعلي',
+    auto_refresh_15s:     'تلقائي كل 15 ثانية',
+    last_webhook:         'آخر webhook',
+
+    // ── تصدير PDF ──
+    pdf_title:            'FORTSPEED - تقرير أداء الشبكة',
+    pdf_date_label:       'التاريخ',
+
+    // ── أعمدة الجدول ──
+    col_time:             'الوقت',
+    col_link:             'الخط',
+    col_status:           'الحالة',
+    col_level:            'المستوى',
+    col_message:          'الرسالة',
+    col_prev_interface:   'الواجهة السابقة',
+    col_new_interface:    'الواجهة الجديدة',
+
+    // ── SDWAN ──
+    sdwan_no_failover:      'لم يتم تسجيل أي تجاوز فشل بعد',
+    sdwan_failover_note:    'سيظهر هنا عند تغيير العضو النشط في SDWAN',
+    sdwan_no_failover_short: 'لا تجاوز',
+    sdwan_coverage:         'تغطية SDWAN',
+    sdwan_total_failovers:  'إجمالي التجاوزات',
+    sdwan_last_failover:    'آخر تجاوز',
+    sdwan_all_time:         'كل الأوقات',
+
+    // ── التاريخ السريع ──
+    quick_today: 'اليوم',
+    quick_7d:    '7 أيام',
+    quick_30d:   '30 يومًا',
+    quick_3m:    '3 أشهر',
+
+    // ── وحدات الوقت ──
+    time_unit_min:  'د',
+    time_unit_hour: 'س',
+
+    // ── لوحة التشخيص ──
+    diag_last_success_test: 'آخر اختبار سرعة ناجح',
+    diag_recent_stats:      'أحدث 20 سجل SpeedStats',
+
+    // ── SDWAN إضافي ──
+    col_updated:           'تحديث',
+    sdwan_no_webhook:      'لم يتم استلام أي webhook بعد',
+    sdwan_top_failovers:   'المهام الأكثر تجاوزًا للفشل',
+    sdwan_no_history:      'لا يوجد سجل تجاوز بعد',
+    sdwan_active_count:    '{n} SDWAN نشط',
+    sdwan_mission_count:   '{n} / {total} مهام',
   },
 };
 

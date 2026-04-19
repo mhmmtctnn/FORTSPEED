@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
-import { useT } from '../i18n';
+import { useT, useLanguage, LOCALE_BCP47 } from '../i18n';
 import { FilterCombobox } from './FilterCombobox';
 import Map, { Marker, NavigationControl, Popup, MapRef, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -94,6 +94,8 @@ export default function MapView({
   onMarkerClick, onClearSelection, onSetPopup, onSetVpnTab, onMapFilterChange,
 }: Props) {
   const t = useT();
+  const { locale } = useLanguage();
+  const bcp47 = LOCALE_BCP47[locale];
   const [vpnMapFilter, setVpnMapFilter] = useState<'GSM' | 'METRO' | 'HUB' | null>(null);
   const [tagFilter, setTagFilter] = useState<number | null>(null);
   const [speedFilter, setSpeedFilter] = useState<'excellent' | 'good' | 'poor' | 'nodata' | null>(null);
@@ -699,7 +701,7 @@ export default function MapView({
                   <Signal size={15} color="var(--purple)"/>
                   <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--purple)' }}>{t('gsm_mobile')}</span>
                   {selectedMission.gsm_test_time
-                    ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.gsm_test_time).toLocaleString('tr-TR')}</span>
+                    ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.gsm_test_time).toLocaleString(bcp47)}</span>
                     : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>{t('no_data')}</span>}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
@@ -736,7 +738,7 @@ export default function MapView({
                   <Wifi size={15} color="var(--accent)"/>
                   <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>{t('metro_link')}</span>
                   {selectedMission.metro_test_time
-                    ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.metro_test_time).toLocaleString('tr-TR')}</span>
+                    ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.metro_test_time).toLocaleString(bcp47)}</span>
                     : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>{t('no_data')}</span>}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
@@ -767,7 +769,7 @@ export default function MapView({
                     <ShieldCheck size={15} color="var(--green)"/>
                     <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--green)' }}>{t('hub_link')}</span>
                     {selectedMission.hub_test_time
-                      ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.hub_test_time).toLocaleString('tr-TR')}</span>
+                      ? <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{new Date(selectedMission.hub_test_time).toLocaleString(bcp47)}</span>
                       : <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--red)' }}>{t('no_data')}</span>}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
@@ -824,7 +826,7 @@ export default function MapView({
                     )}
                     {sdwan.updated_at && (
                       <div style={{ marginTop: 6, fontSize: '0.6rem', color: 'var(--text-muted)' }}>
-                        {t('last_update')}: {new Date(sdwan.updated_at).toLocaleString('tr-TR')}
+                        {t('last_update')}: {new Date(sdwan.updated_at).toLocaleString(bcp47)}
                       </div>
                     )}
                   </div>

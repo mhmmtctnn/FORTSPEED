@@ -16,7 +16,7 @@ import {
   View, VpnTab,
   Mission, StatPoint, Filters, CityRow, ActivityEntry,
 } from './types';
-import { LanguageProvider, useT } from './i18n';
+import { LanguageProvider, useT, useLanguage, LOCALE_BCP47 } from './i18n';
 import { useMissions, useCities, useFilterOptions, useDashboardData, useReportsData, useCityMutations, useSparklines, useSdwan } from './hooks/useQueries';
 
 const API_BASE = '/api';
@@ -61,6 +61,8 @@ const queryClient = new QueryClient({
 function AppContent({ onLogout }: { onLogout: () => void }) {
   const qc = useQueryClient();
   const t = useT();
+  const { locale } = useLanguage();
+  const bcp47 = LOCALE_BCP47[locale];
   const [view, setView] = useState<View>('dashboard');
 
   const NAV = NAV_DEFS.map(n => ({ ...n, label: t(n.key) }));
@@ -135,7 +137,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
           id: `alert-${Date.now()}`,
           deviceName: msg.deviceName,
           vpnName: msg.vpnName,
-          time: new Date(msg.time).toLocaleTimeString('tr-TR'),
+          time: new Date(msg.time).toLocaleTimeString(bcp47),
         };
         setAlerts(prev => [entry, ...prev.slice(0, 4)]);
         // Kalıcı kuyruğa da ekle — aynı cihaz zaten varsa ekleme
@@ -176,7 +178,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
 
       const vpnKey: VpnTab | null = isGsm ? 'GSM' : isMetro ? 'METRO' : isHub ? 'HUB' : null;
       if (vpnKey) {
-        const point: StatPoint = { time: new Date(u.time).toLocaleTimeString('tr-TR'), download: u.download, upload: u.upload, latency: u.latency, vpn_type: vpnKey };
+        const point: StatPoint = { time: new Date(u.time).toLocaleTimeString(bcp47), download: u.download, upload: u.upload, latency: u.latency, vpn_type: vpnKey };
         setStats(p => ({ ...p, [vpnKey]: [...p[vpnKey].slice(-19), point] }));
       }
 
@@ -191,7 +193,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             download: u.download,
             upload: u.upload,
             latency: u.latency,
-            time: new Date(u.time).toLocaleTimeString('tr-TR'),
+            time: new Date(u.time).toLocaleTimeString(bcp47),
           },
           ...af.slice(0, 29)
         ]);
@@ -252,7 +254,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
     setSelectedMission(m); setPopupInfo(m); setSelectedVpnTab('GSM'); setStats({ GSM: [], METRO: [], HUB: [] });
     try {
       const r = await axios.get(`${API_BASE}/stats/${m.id}`);
-      const all: StatPoint[] = r.data.map((s: StatPoint) => ({ ...s, time: new Date(s.time).toLocaleTimeString('tr-TR') }));
+      const all: StatPoint[] = r.data.map((s: StatPoint) => ({ ...s, time: new Date(s.time).toLocaleTimeString(bcp47) }));
       setStats({
         GSM:   all.filter(s => s.vpn_type === 'GSM').slice(-20),
         METRO: all.filter(s => s.vpn_type === 'METRO').slice(-20),

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useT } from '../i18n';
+import { useT, useLanguage, LOCALE_BCP47 } from '../i18n';
 import {
   Activity, RefreshCw, AlertTriangle, Wifi, Terminal,
   ChevronDown, ChevronUp, ArrowDown, ArrowUp,
@@ -51,12 +51,12 @@ const TIME_MS: Record<TimeRange, number> = {
   '7d': 7 * 86_400_000, '30d': 30 * 86_400_000,
 };
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, bcp47: string, minUnit: string, hourUnit: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60)    return `${s}s`;
-  if (s < 3600)  return `${Math.floor(s / 60)}dk`;
-  if (s < 86400) return `${Math.floor(s / 3600)}sa`;
-  return new Date(iso).toLocaleDateString('tr-TR');
+  if (s < 3600)  return `${Math.floor(s / 60)}${minUnit}`;
+  if (s < 86400) return `${Math.floor(s / 3600)}${hourUnit}`;
+  return new Date(iso).toLocaleDateString(bcp47);
 }
 
 const SEV_COLOR: Record<string, string> = {
@@ -86,6 +86,10 @@ interface LogViewerProps {
 
 export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
   const translate = useT();
+  const { locale } = useLanguage();
+  const bcp47 = LOCALE_BCP47[locale];
+  const minUnit  = translate('time_unit_min');
+  const hourUnit = translate('time_unit_hour');
   const [tab, setTab]           = useState<TabType>('WEBHOOK');
   const [sysLogs, setSysLogs]   = useState<SystemLog[]>([]);
   const [whkLogs, setWhkLogs]   = useState<WebhookLog[]>([]);
@@ -239,7 +243,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
           <div>
             <h1 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>{translate('logs_title')}</h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 2 }}>
-              Son güncelleme: {refresh.toLocaleTimeString('tr-TR')} · her 15s otomatik
+              {translate('last_update')}: {refresh.toLocaleTimeString(bcp47)} · {translate('auto_refresh_15s')}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -670,7 +674,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                       )}
                     </div>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.sourceip}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{timeAgo(log.createdat)}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{timeAgo(log.createdat, bcp47, minUnit, hourUnit)}</span>
                     {open ? <ChevronUp size={12} color="var(--text-muted)" /> : <ChevronDown size={12} color="var(--text-muted)" />}
                   </div>
 
@@ -725,15 +729,15 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               {/* Son başarılı hız testi */}
               <div className="glass-card" style={{ padding: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>
-                  <Stethoscope size={15} /> Son Başarılı Hız Testi
+                  <Stethoscope size={15} /> {translate('diag_last_success_test')}
                 </div>
                 {diag.lastSuccessfulSpeedTest ? (
                   <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                     {[
-                      { label: 'Misyon',   val: diag.lastSuccessfulSpeedTest.cityname },
-                      { label: 'Hat',      val: diag.lastSuccessfulSpeedTest.vpntypename },
-                      { label: 'İndirme',  val: `${Number(diag.lastSuccessfulSpeedTest.downloadspeed ?? 0).toFixed(1)} Mbps` },
-                      { label: 'Zaman',    val: new Date(diag.lastSuccessfulSpeedTest.measuredat).toLocaleString('tr-TR') },
+                      { label: translate('report_missions'), val: diag.lastSuccessfulSpeedTest.cityname },
+                      { label: translate('col_link'),        val: diag.lastSuccessfulSpeedTest.vpntypename },
+                      { label: translate('download'),        val: `${Number(diag.lastSuccessfulSpeedTest.downloadspeed ?? 0).toFixed(1)} Mbps` },
+                      { label: translate('col_time'), val: new Date(diag.lastSuccessfulSpeedTest.measuredat).toLocaleString(bcp47) },
                     ].map(({ label, val }) => (
                       <div key={label}>
                         <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{label}</div>
@@ -807,7 +811,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                               const barH    = max > 0 ? Math.max(4, Math.round((d.count / max) * 64)) : 4;
                               const dayDate = new Date(d.day + 'T12:00:00');
                               const dayName = DAY_NAMES[dayDate.getDay()];
-                              const dateStr = dayDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
+                              const dateStr = dayDate.toLocaleDateString(bcp47, { day: '2-digit', month: '2-digit' });
                               return (
                                 <div key={d.day} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
                                   {/* Sayı */}
@@ -875,7 +879,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                     {diag.recentRawWebhooks.map((w: any, i: number) => (
                       <div key={i} style={{ padding: '10px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{new Date(w.ts).toLocaleString('tr-TR')}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{new Date(w.ts).toLocaleString(bcp47)}</span>
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 3, background: w.type === 'unknown' ? 'rgba(239,68,68,0.15)' : 'rgba(56,189,248,0.12)', color: w.type === 'unknown' ? 'var(--red)' : 'var(--accent)', border: `1px solid ${w.type === 'unknown' ? 'rgba(239,68,68,0.3)' : 'rgba(56,189,248,0.25)'}` }}>{w.type}</span>
                           <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{w.method} {w.url}</span>
                           <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{w.ip}</span>
@@ -889,12 +893,12 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
 
               {/* Son SpeedStats kayıtları */}
               <div className="glass-card" style={{ padding: 20 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: 14 }}>Son 20 SpeedStats Kaydı</div>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: 14 }}>{translate('diag_recent_stats')}</div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        {['Misyon','Hat','İndirme','Yükleme','Durum','Zaman'].map(h => (
+                        {[translate('report_missions'), translate('col_link'), translate('download'), translate('upload'), translate('col_status'), translate('col_time')].map(h => (
                           <th key={h} style={{ padding: '4px 10px', textAlign: 'left', fontWeight: 700 }}>{h}</th>
                         ))}
                       </tr>
@@ -914,7 +918,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                                 : <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--red)' }}><XCircle size={11} /> N/A</span>
                               }
                             </td>
-                            <td style={{ padding: '6px 10px', color: 'var(--text-muted)', fontSize: 11 }}>{new Date(s.measuredat).toLocaleString('tr-TR')}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text-muted)', fontSize: 11 }}>{new Date(s.measuredat).toLocaleString(bcp47)}</td>
                           </tr>
                         );
                       })}
@@ -940,7 +944,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               borderBottom: '1px solid var(--border)',
               backdropFilter: 'blur(4px)',
             }}>
-              <span>Zaman</span><span>Seviye</span><span>Mesaj</span>
+              <span>{translate('col_time')}</span><span>{translate('col_level')}</span><span>{translate('col_message')}</span>
             </div>
             {filteredSys.map((log, idx) => {
               const color = SEV_COLOR[log.severity] || 'var(--accent)';
@@ -954,7 +958,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                   border: '1px solid var(--border)', borderLeft: `3px solid ${color}`,
                 }}>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                    {new Date(log.createdat).toLocaleTimeString('tr-TR')}
+                    {new Date(log.createdat).toLocaleTimeString(bcp47)}
                   </span>
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: bg, color, width: 'fit-content' }}>
                     {log.severity}

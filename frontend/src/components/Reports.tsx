@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useT } from '../i18n';
+import { useT, useLanguage, LOCALE_BCP47 } from '../i18n';
 import { FilterCombobox } from './FilterCombobox';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
 import { BarChart3, Filter, Download, Trophy, Globe, Activity, ListFilter, Calendar, X } from 'lucide-react';
@@ -16,22 +16,15 @@ const today = () => new Date().toISOString().split('T')[0];
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
 const DATA_MIN = '2025-08-19';
 
-const QUICK_DATE = [
-  { label: 'Bugün',   fn: () => ({ startDate: today(), endDate: today() }) },
-  { label: '7 Gün',  fn: () => ({ startDate: daysAgo(7),  endDate: today() }) },
-  { label: '30 Gün', fn: () => ({ startDate: daysAgo(30), endDate: today() }) },
-  { label: '3 Ay',   fn: () => ({ startDate: daysAgo(90), endDate: today() }) },
-  { label: 'Tümü',   fn: () => ({ startDate: '', endDate: '' }) },
-];
-
-function validateDateRange(s: string, e: string): string {
-  const t = today();
+function validateDateRange(s: string, e: string, translate: (k: string) => string, bcp47: string): string {
+  const tod = today();
   if (s && e) {
-    if (s > e) return 'Başlangıç tarihi bitiş tarihinden sonra olamaz.';
-    if (s > t || e > t) return 'Gelecek tarih seçilemez.';
-    if (s < DATA_MIN) return `Veri en erken ${new Date(DATA_MIN).toLocaleDateString('tr-TR')} tarihinden itibaren mevcut.`;
-  } else if (s && !e) return 'Bitiş tarihini de seçin.';
-  else if (!s && e) return 'Başlangıç tarihini de seçin.';
+    if (s > e) return translate('date_start_after_end');
+    if (s > tod || e > tod) return translate('date_future_error');
+    if (s < DATA_MIN)
+      return translate('date_min_warning').replace('{date}', new Date(DATA_MIN).toLocaleDateString(bcp47));
+  } else if (s && !e) return translate('date_select_end');
+  else if (!s && e) return translate('date_select_start');
   return '';
 }
 
@@ -96,7 +89,7 @@ function exportCsv(data: Record<string, unknown>[], filename: string) {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-async function exportPdf(data: Record<string, unknown>[], filename: string, elementId?: string) {
+async function exportPdf(data: Record<string, unknown>[], filename: string, translate: (k: string) => string, bcp47: string, elementId?: string) {
   if (!data.length && !elementId) return;
   const { jsPDF } = await import('jspdf');
   let autoTable: any;
@@ -104,13 +97,13 @@ async function exportPdf(data: Record<string, unknown>[], filename: string, elem
     autoTable = (await import('jspdf-autotable')).default;
   }
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  
+
   doc.setFontSize(16);
   doc.setTextColor(56, 189, 248);
-  doc.text('FORTSPEED - Gecmis Ag Performans Raporu', 14, 15);
+  doc.text(translate('pdf_title'), 14, 15);
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Tarih: ${new Date().toLocaleString('tr-TR')}`, 14, 22);
+  doc.text(`${translate('pdf_date_label')}: ${new Date().toLocaleString(bcp47)}`, 14, 22);
 
   let startY = 30;
 
@@ -160,7 +153,7 @@ async function exportPdf(data: Record<string, unknown>[], filename: string, elem
       head: [mappedKeys],
       body: data.map((r: any) => keys.map(k => {
         const val = r[k];
-        if (val instanceof Date) return val.toLocaleString('tr-TR');
+        if (val instanceof Date) return val.toLocaleString(bcp47);
         if (typeof val === 'number') return Number(val).toFixed(2);
         return String(val ?? '');
       })),
@@ -222,6 +215,17 @@ const StatCard = ({ title, value }: { title: string; value: string | number }) =
 
 export default function Reports({ missions, filters, filterOptions, summary, missionReports, countryReports, continentReports, vpntypeReports, reports, sparklines, loading, onFiltersChange, onApply }: Props) {
   const t = useT();
+  const { locale } = useLanguage();
+  const bcp47 = LOCALE_BCP47[locale];
+
+  const QUICK_DATE = useMemo(() => [
+    { label: t('quick_today'), fn: () => ({ startDate: today(), endDate: today() }) },
+    { label: t('quick_7d'),    fn: () => ({ startDate: daysAgo(7),  endDate: today() }) },
+    { label: t('quick_30d'),   fn: () => ({ startDate: daysAgo(30), endDate: today() }) },
+    { label: t('quick_3m'),    fn: () => ({ startDate: daysAgo(90), endDate: today() }) },
+    { label: t('all'),         fn: () => ({ startDate: '', endDate: '' }) },
+  ], [t]);
+
   const reportTypeTabs = [
     { value: 'summary' as ReportType, label: t('report_summary') },
     { value: 'missions' as ReportType, label: t('report_missions') },
@@ -401,7 +405,7 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
             .filter(m => !filters.continent || m.continent === filters.continent)
             .filter(m => !filters.country || String(m.country || '').trim() === filters.country)
             .sort((a, b) => a.name.localeCompare(b.name));
-          const dateErr    = validateDateRange(filters.startDate, filters.endDate);
+          const dateErr    = validateDateRange(filters.startDate, filters.endDate, t, bcp47);
           const hasFilter  = !!(filters.continent || filters.country || filters.missionId || filters.startDate || filters.endDate || filters.minSpeed || filters.maxSpeed);
           const clearAll   = () => onFiltersChange({ ...filters, continent: '', country: '', missionId: '', startDate: '', endDate: '', minSpeed: '', maxSpeed: '' });
           const activeCount = [filters.continent, filters.country, filters.missionId, filters.startDate || filters.endDate, filters.minSpeed || filters.maxSpeed].filter(Boolean).length;
@@ -562,7 +566,7 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
                   }},
                   { label: '📄 PDF', action: () => {
                     const data = filters.reportType === 'summary' ? [] : (missionReports.length ? missionReports : countryReports.length ? countryReports : continentReports.length ? continentReports : reports);
-                    exportPdf(data, `rapor-${filters.reportType}-${Date.now()}.pdf`, 'report-content-area');
+                    exportPdf(data, `rapor-${filters.reportType}-${Date.now()}.pdf`, t, bcp47, 'report-content-area');
                   }},
                   { label: '🖼️ PNG', action: () => exportImage('report-content-area', `rapor-${filters.reportType}-${Date.now()}.png`, 'png') },
                   { label: '📷 JPEG', action: () => exportImage('report-content-area', `rapor-${filters.reportType}-${Date.now()}.jpeg`, 'jpeg') },
@@ -1130,7 +1134,7 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
                       <td className="right" style={{ color: 'var(--blue)', fontWeight: 600 }}>{fmt(r.uploadspeed)}</td>
                       <td className="right" style={{ color: 'var(--amber)' }}>{fmt(r.latency, 0)}</td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                        {r.measuredat ? new Date(String(r.measuredat)).toLocaleString('tr-TR') : '–'}
+                        {r.measuredat ? new Date(String(r.measuredat)).toLocaleString(bcp47) : '–'}
                       </td>
                     </tr>
                   ))}
