@@ -8,6 +8,7 @@ export async function registerSdwanRoutes(
   findCityId: FindCityIdFn,
   testing: boolean,
 ): Promise<void> {
+  // codeql[js/missing-rate-limiting] — @fastify/rate-limit global + per-route config applied
   fastify.post('/api/sdwan/inject', { config: { rateLimit: { max: testing ? 100000 : 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as any;
     const { deviceName, members, activeMemberSeq } = body || {};

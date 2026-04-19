@@ -30,17 +30,16 @@ const PROVIDER_ICONS = [
 // URL veya local path mi, emoji mi — buna göre render et
 // Güvenlik: Yalnızca PROVIDER_ICONS içindeki URL'leri güvenli kabul eder, CodeQL XSS uyarısını çözer.
 export function renderTagIcon(icon: string, size = 16) {
-  const isProviderIcon = PROVIDER_ICONS.some(p => p.url === icon);
-  if (isProviderIcon) {
+  const provider = PROVIDER_ICONS.find(p => p.url === icon);
+  if (provider) {
     return (
       <img
-        src={icon}
+        src={provider.url}
         alt=""
         style={{ width: size, height: size, objectFit: 'contain', display: 'block', borderRadius: 2 }}
       />
     );
   }
-  // Harici veya tanımlı olmayan URL'leri (http/https//) kabul etme — sadece emoji/metin renderla
   return <span style={{ fontSize: size * 0.9, lineHeight: 1 }}>{icon}</span>;
 }
 

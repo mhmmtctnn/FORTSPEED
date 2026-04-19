@@ -398,6 +398,7 @@ export async function registerWebhookRoutes(
 
   const webhookRateLimit = { max: testing ? 100000 : 60, timeWindow: '1 minute' };
 
+  // codeql[js/missing-rate-limiting] — @fastify/rate-limit global + per-route config applied
   fastify.post('/api/webhook', { config: { rateLimit: webhookRateLimit } }, webhookHandler);
   fastify.post('/webhook',     { config: { rateLimit: webhookRateLimit } }, webhookHandler);
   fastify.post('/',            { config: { rateLimit: webhookRateLimit } }, webhookHandler);
@@ -452,6 +453,7 @@ export async function registerWebhookRoutes(
     }
   });
 
+  // codeql[js/missing-rate-limiting] — @fastify/rate-limit global + per-route config applied
   fastify.post('/webhook/speedtest', { config: { rateLimit: { max: testing ? 100000 : 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { cityId, vpnTypeId, deviceName, downloadSpeed, uploadSpeed, latency, uploadStatus, downloadStatus } = request.body as any;
     const query = `

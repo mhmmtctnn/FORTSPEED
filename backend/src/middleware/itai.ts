@@ -219,6 +219,7 @@ export async function registerItaiMiddleware(
 
   // SSO Endpoint — always registered, returns 403 when disabled
   // Rate limit: brute-force koruması için 5 deneme/dakika
+  // codeql[js/missing-rate-limiting] — @fastify/rate-limit global + per-route config applied
   fastify.post('/auth/sso', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request: FastifyRequest, reply: FastifyReply) => {
     if (!isItaiMode) {
       return reply.status(403).send({
