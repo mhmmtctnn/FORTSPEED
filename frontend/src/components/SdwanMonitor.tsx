@@ -1,7 +1,68 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { GitBranch, RefreshCw, Search, X, Wifi, Signal, Activity, History, ArrowRight, Stethoscope, CheckCircle, XCircle, TrendingUp } from 'lucide-react';
+import { GitBranch, RefreshCw, Search, X, Wifi, Signal, Activity, History, ArrowRight, Stethoscope, CheckCircle, XCircle, TrendingUp, ChevronDown, ChevronUp, Inbox } from 'lucide-react';
 import { SdwanRow, SdwanHistoryEntry } from '../types';
 import { useT, useLanguage, LOCALE_BCP47 } from '../i18n';
+
+/* ── SDWAN Webhook log tipleri & parser ── */
+interface WebhookLog {
+  webhooklogid: number;
+  sourceip: string;
+  rawpayload: string;
+  parsedcontext: any;
+  createdat: string;
+}
+
+interface SdwanMember { seq: number; name: string; active: boolean; cost?: number; }
+interface ParsedSdwan { deviceName: string | null; members: SdwanMember[]; activeMember: SdwanMember | null; activeMemberSeq: number | null; }
+
+function parseSdwanRaw(raw: string): ParsedSdwan {
+  const missionM = raw.match(/={5,}[^\n]*\n\s*([A-Z0-9][\w\-.]+)\s+\S/);
+  const deviceName = missionM?.[1]?.trim() ?? null;
+  const members: SdwanMember[] = [];
+  const editRe = /edit\s+(\d+)([\s\S]*?)next/gi;
+  let editM: RegExpExecArray | null;
+  while ((editM = editRe.exec(raw)) !== null) {
+    const ifaceM = editM[2].match(/set\s+interface\s+"([^"]+)"/i);
+    if (!ifaceM) continue;
+    const costM = editM[2].match(/set\s+cost\s+(\d+)/i);
+    members.push({ seq: parseInt(editM[1]), name: ifaceM[1], active: false, cost: costM ? parseInt(costM[1]) : undefined });
+  }
+  if (members.length === 0) {
+    const re2 = /member[\s\[]?\s*(\d+)\]?\s*:name=(\S+)/gi;
+    let m2: RegExpExecArray | null;
+    while ((m2 = re2.exec(raw)) !== null) {
+      const seg = raw.slice(m2.index, m2.index + 300);
+      const costM = seg.match(/cost\s*=\s*(\d+)/i);
+      members.push({ seq: parseInt(m2[1]), name: m2[2], active: false, cost: costM ? parseInt(costM[1]) : undefined });
+    }
+  }
+  let activeMember: SdwanMember | null = null;
+  let activeMemberSeq: number | null = null;
+  const selLineM = raw.match(/interface[:\s]+([A-Z0-9][\w\-.]+)[^\n]*\bselected\b/i);
+  if (selLineM) {
+    const found = members.find(mb => mb.name === selLineM[1]);
+    if (found) { found.active = true; activeMember = found; }
+    else activeMember = { seq: 0, name: selLineM[1], active: true };
+  }
+  if (!activeMember) {
+    const seqMatches = [...raw.matchAll(/sdwan_mbr_seq=(\d+)/gi)];
+    if (seqMatches.length > 0) {
+      const freq: Record<number, number> = {};
+      seqMatches.forEach(sm => { const n = parseInt(sm[1]); freq[n] = (freq[n] || 0) + 1; });
+      activeMemberSeq = parseInt(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
+      const found = members.find(mb => mb.seq === activeMemberSeq);
+      if (found) { found.active = true; activeMember = found; }
+    }
+  }
+  if (!activeMember) {
+    const actNumM = raw.match(/active[_\s]member[:\s]+(\d+)/i);
+    if (actNumM) {
+      const found = members.find(mb => mb.seq === parseInt(actNumM[1]));
+      if (found) { found.active = true; activeMember = found; }
+    }
+  }
+  return { deviceName, members, activeMember, activeMemberSeq };
+}
 
 function timeAgo(iso: string, bcp47: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -71,23 +132,28 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
   const bcp47 = LOCALE_BCP47[locale];
   const [rows, setRows]           = useState<SdwanRow[]>(initialData);
   const [history, setHistory]     = useState<SdwanHistoryEntry[]>([]);
+  const [whkLogs, setWhkLogs]     = useState<WebhookLog[]>([]);
   const [loading, setLoading]     = useState(false);
   const [refresh, setRefresh]     = useState(new Date());
   const [search, setSearch]       = useState('');
   const [expanded, setExpanded]   = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'status' | 'history' | 'diag'>('status');
+  const [whkExpanded, setWhkExpanded] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'status' | 'history' | 'webhooks' | 'diag'>('status');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sdwanRes, histRes] = await Promise.all([
+      const [sdwanRes, histRes, whkRes] = await Promise.all([
         fetch('/api/sdwan'),
         fetch('/api/sdwan/history?limit=200'),
+        fetch('/api/logs/webhooks?isSdwan=true&limit=500'),
       ]);
       const sdwanData = await sdwanRes.json();
       const histData  = await histRes.json();
+      const whkData   = await whkRes.json();
       if (Array.isArray(sdwanData)) setRows(sdwanData);
       if (Array.isArray(histData))  setHistory(histData);
+      if (Array.isArray(whkData))   setWhkLogs(whkData);
       setRefresh(new Date());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -134,6 +200,38 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
 
   const withData    = useMemo(() => filtered.filter(r => r.members && r.members.length > 0), [filtered]);
   const withoutData = useMemo(() => filtered.filter(r => !r.members || r.members.length === 0), [filtered]);
+
+  /* parseSdwanRaw — whkLogs değişince bir kez hesapla + STATUS↔MEMBERS çapraz eşle */
+  const parsedWhkLogs = useMemo(() => {
+    // 1. Aşama: MEMBERS/COMBINED loglarından cihaz→üye haritası kur (en güncel kayıt kazanır)
+    const membersByDevice = new Map<string, SdwanMember[]>();
+    whkLogs.forEach(log => {
+      const pType = log.parsedcontext?.payloadType as string;
+      if (pType !== 'sdwan_members' && pType !== 'sdwan_combined') return;
+      const p = parseSdwanRaw(log.rawpayload || '');
+      const key = p.deviceName || log.sourceip;
+      if (key && !membersByDevice.has(key) && p.members.length > 0) {
+        membersByDevice.set(key, p.members);
+      }
+    });
+
+    // 2. Aşama: Tüm logları parse et; STATUS loglarında seq→interface adı çöz
+    return whkLogs.map(log => {
+      const parsed = parseSdwanRaw(log.rawpayload || '');
+      const pType  = log.parsedcontext?.payloadType as string;
+
+      if (pType === 'sdwan_status' && parsed.activeMemberSeq !== null && !parsed.activeMember) {
+        const key = parsed.deviceName || log.sourceip;
+        const knownMembers = membersByDevice.get(key);
+        if (knownMembers) {
+          const found = knownMembers.find(m => m.seq === parsed.activeMemberSeq);
+          if (found) parsed.activeMember = { ...found, active: true };
+        }
+      }
+
+      return { log, parsed };
+    });
+  }, [whkLogs]);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }} className="fade-in">
@@ -188,9 +286,10 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
           {/* Tab butonları — header içinde, scroll dışı */}
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
             {([
-              { key: 'status',  label: t('sdwan_status'),  icon: <Activity    size={13} /> },
-              { key: 'history', label: t('sdwan_history'), icon: <History     size={13} /> },
-              { key: 'diag',    label: t('logs_diag'),     icon: <Stethoscope size={13} /> },
+              { key: 'status',   label: t('sdwan_status'),  icon: <Activity    size={13} />, badge: null },
+              { key: 'history',  label: t('sdwan_history'), icon: <History     size={13} />, badge: history.length > 0 ? history.length : null },
+              { key: 'webhooks', label: 'Webhook Log',      icon: <Inbox       size={13} />, badge: whkLogs.length > 0 ? whkLogs.length : null },
+              { key: 'diag',     label: t('logs_diag'),     icon: <Stethoscope size={13} />, badge: null },
             ] as const).map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                 style={{
@@ -203,14 +302,9 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                   fontSize: '0.8rem', cursor: 'pointer',
                 }}>
                 {tab.icon} {tab.label}
-                {tab.key === 'history' && history.length > 0 && (
+                {tab.badge !== null && (
                   <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 99, fontSize: '0.65rem', padding: '0 5px', fontWeight: 800 }}>
-                    {history.length}
-                  </span>
-                )}
-                {tab.key === 'diag' && rows.length > 0 && (
-                  <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 99, fontSize: '0.65rem', padding: '0 5px', fontWeight: 800 }}>
-                    {rows.length}
+                    {tab.badge}
                   </span>
                 )}
               </button>
@@ -520,6 +614,135 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
           </div>
         )}
         </>}
+
+        {/* ── Webhook Log Sekmesi ── */}
+        {activeTab === 'webhooks' && (() => {
+          const q = search.trim().toLowerCase();
+          const filteredParsed = q
+            ? parsedWhkLogs.filter(({ log, parsed }) =>
+                [parsed.deviceName, log.sourceip, log.parsedcontext?.payloadType].join(' ').toLowerCase().includes(q)
+              )
+            : parsedWhkLogs;
+
+          if (filteredParsed.length === 0) return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '60px 0', color: 'var(--text-muted)' }}>
+              <Inbox size={32} style={{ opacity: 0.2 }} />
+              <p style={{ fontSize: 13 }}>Henüz SDWAN webhook kaydı yok</p>
+            </div>
+          );
+
+          return (
+            <div className="fade-in">
+              {/* Sütun başlıkları */}
+              <div style={{
+                position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg-base)',
+                display: 'grid', gridTemplateColumns: '4px 180px 130px 1fr 100px 70px 14px',
+                gap: '0 12px', padding: '12px 14px 6px',
+                fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: 'var(--text-muted)',
+                borderBottom: '1px solid var(--border)', backdropFilter: 'blur(4px)',
+              }}>
+                <span/><span>Misyon / IP</span><span>Tür</span><span>Özet</span>
+                <span>Kaynak IP</span><span style={{ textAlign: 'right' }}>Zaman</span><span/>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+                {filteredParsed.map(({ log, parsed }, idx) => {
+                  const p       = log.parsedcontext || {};
+                  const pType   = (p.payloadType as string) || 'sdwan';
+                  const open    = whkExpanded === log.webhooklogid;
+
+                  const tColor =
+                    pType === 'sdwan_combined' ? 'var(--accent)'  :
+                    pType === 'sdwan_members'  ? 'var(--purple)'  :
+                    pType === 'sdwan_status'   ? 'var(--amber)'   :
+                    pType === 'sdwan_json'     ? 'var(--green)'   : 'var(--text-muted)';
+                  const tBg =
+                    pType === 'sdwan_combined' ? 'rgba(56,189,248,0.12)'  :
+                    pType === 'sdwan_members'  ? 'rgba(168,85,247,0.12)'  :
+                    pType === 'sdwan_status'   ? 'rgba(245,158,11,0.12)'  :
+                    pType === 'sdwan_json'     ? 'rgba(34,197,94,0.12)'   : 'var(--bg-elevated)';
+                  const tBorder =
+                    pType === 'sdwan_combined' ? 'rgba(56,189,248,0.25)'  :
+                    pType === 'sdwan_members'  ? 'rgba(168,85,247,0.25)'  :
+                    pType === 'sdwan_status'   ? 'rgba(245,158,11,0.25)'  :
+                    pType === 'sdwan_json'     ? 'rgba(34,197,94,0.25)'   : 'var(--border)';
+
+                  const SummaryCell = () => {
+                    if ((pType === 'sdwan_members' || pType === 'sdwan_combined') && parsed.members.length > 0) {
+                      return (
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {parsed.members.map(mb => (
+                            <span key={mb.seq} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                              {mb.name}{mb.cost != null && <span style={{ opacity: 0.55, marginLeft: 4 }}>cost:{mb.cost}</span>}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    }
+                    if (pType === 'sdwan_status') {
+                      if (parsed.activeMember) {
+                        return (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'monospace' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--amber)', flexShrink: 0 }} />
+                            {parsed.activeMember.name}
+                          </span>
+                        );
+                      }
+                      if (parsed.activeMemberSeq !== null) {
+                        return (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--amber)', flexShrink: 0 }} />
+                            Üye #{parsed.activeMemberSeq} seçili
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 400, fontFamily: 'monospace' }}>sdwan_mbr_seq={parsed.activeMemberSeq}</span>
+                          </span>
+                        );
+                      }
+                      return <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Aktif interface tespit edilemedi</span>;
+                    }
+                    return <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{log.rawpayload?.slice(0, 80) || '—'}</span>;
+                  };
+
+                  return (
+                    <div key={log.webhooklogid} style={{ borderRadius: 'var(--radius-sm)', border: `1px solid ${open ? 'rgba(56,189,248,0.25)' : 'var(--border)'}`, background: idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)', overflow: 'hidden' }}>
+                      <div
+                        onClick={() => setWhkExpanded(open ? null : log.webhooklogid)}
+                        style={{ display: 'grid', gridTemplateColumns: '4px 180px 130px 1fr 100px 70px 14px', gap: '0 12px', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: open ? 'var(--accent-dim)' : 'transparent' }}
+                        onMouseEnter={e => { if (!open) (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'; }}
+                        onMouseLeave={e => { if (!open) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                      >
+                        <div style={{ width: 4, height: 28, borderRadius: 2, background: tColor }} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
+                          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {parsed.deviceName ?? log.sourceip}
+                          </span>
+                          {parsed.deviceName && <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{log.sourceip}</span>}
+                        </div>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: tBg, color: tColor, border: `1px solid ${tBorder}`, width: 'fit-content' }}>
+                          <GitBranch size={9} />{pType.replace('sdwan_', '').toUpperCase()}
+                        </span>
+                        <div style={{ overflow: 'hidden', minWidth: 0 }}><SummaryCell /></div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.sourceip}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{timeAgo(log.createdat, bcp47)}</span>
+                        {open ? <ChevronUp size={12} color="var(--text-muted)" /> : <ChevronDown size={12} color="var(--text-muted)" />}
+                      </div>
+                      {open && (
+                        <div style={{ borderTop: '1px solid var(--border)', padding: '14px 16px', background: 'var(--bg-base)' }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 8 }}>
+                            Ham SDWAN Payload — {pType}
+                          </p>
+                          <pre style={{ fontSize: 11, color: 'var(--green)', background: 'var(--bg-elevated)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', overflow: 'auto', maxHeight: 320, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.7, fontFamily: 'Consolas, monospace', margin: 0 }}>
+                            {log.rawpayload || '(boş)'}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Tanı Sekmesi ── */}
         {activeTab === 'diag' && (() => {

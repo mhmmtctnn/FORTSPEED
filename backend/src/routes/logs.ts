@@ -21,13 +21,20 @@ export async function registerLogRoutes(fastify: FastifyInstance): Promise<void>
   });
 
   fastify.get('/api/logs/webhooks', async (request, reply) => {
-    const { days } = request.query as any;
+    const { days, limit, isSdwan } = request.query as any;
     const retentionDays = Math.min(Number(days) || 30, 30);
+    const rowLimit      = Math.min(Number(limit) || 500, 5000);
     try {
-      const res = await fastify.pg.query(
-        `SELECT * FROM WebhookLogs WHERE CreatedAt >= NOW() - ($1 || ' days')::INTERVAL ORDER BY CreatedAt DESC LIMIT 5000`,
-        [retentionDays]
-      );
+      const params: any[] = [retentionDays];
+      let q = `SELECT * FROM WebhookLogs WHERE CreatedAt >= NOW() - ($1 || ' days')::INTERVAL`;
+      if (isSdwan === 'true') {
+        q += ` AND parsedcontext->>'isSdwan' = 'true'`;
+      } else if (isSdwan === 'false') {
+        q += ` AND (parsedcontext->>'isSdwan' IS NULL OR parsedcontext->>'isSdwan' = 'false')`;
+      }
+      q += ` ORDER BY CreatedAt DESC LIMIT $2`;
+      params.push(rowLimit);
+      const res = await fastify.pg.query(q, params);
       return reply.send(res.rows);
     } catch (err: any) {
       fastify.log.error(err, 'Failed to fetch WebhookLogs');

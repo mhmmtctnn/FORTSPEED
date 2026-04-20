@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.8.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.8.0)
+[![Version](https://img.shields.io/badge/version-1.10.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.10.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -35,6 +35,7 @@
 - 🌍 **Cascade Geographic Selector** — Mission entry form with Continent → Country → City drill-down; coordinates auto-filled on selection
 - 🎨 **Glassmorphism Login Screen** — Animated world map canvas with 62 global nodes, 115 connection links, 120 multi-color data packets and golden-ratio phase system (no looping artifact)
 - 📊 **Smart N/A Classification** — Configuration-announcement webhooks correctly labeled (not counted as failures)
+- 🌐 **Full i18n / Multi-language** — All UI strings externalised; dynamic locale propagation to date/time formatters across all components
 
 ---
 
@@ -411,6 +412,27 @@ services:
 
 #### 🧪 Tests
 - `types.test.ts` updated to cover new `satellite_type`, `hub_*` fields and SDWAN interface type guards
+
+---
+
+### v1.10.0 — 2026-04-20
+
+**Full Internationalisation (i18n) & UI Polish**
+
+#### 🌐 Internationalisation — Complete UI String Externalisation
+- **All hardcoded `tr-TR` locale strings replaced** with dynamic `translate()` calls — every label, column header, tooltip and date/time formatter now respects the active UI language
+- `LOCALE_BCP47` map introduced: UI locale token maps to a proper BCP-47 tag (e.g. `tr` → `tr-TR`, `en` → `en-US`) passed to all `toLocaleString` / `toLocaleDateString` calls
+- **LogViewer**: last-update bar, webhook `timeAgo()` labels, Diagnostics tab table headers, SpeedStats timestamp column and bar-chart date labels all locale-aware
+- **SdwanMonitor**: all date/time strings, interface labels and status messages use `translate()` + `bcp47`
+- **Dashboard / Reports / MapView / TagsManager**: residual hardcoded strings migrated to `translations.ts`
+- **`translations.ts`** expanded with ~60 new keys covering: `last_update`, `auto_refresh_15s`, `time_unit_min`, `time_unit_hour`, `diag_last_success_test`, `diag_recent_stats`, `col_status`, `col_time`, `col_link` and more
+
+#### 🔒 Security
+- GitHub Code Scanning alerts resolved (round 5): input sanitisation improvements in webhook and SDWAN routes
+
+#### 🗑️ Housekeeping
+- Removed stale screenshot PNG files from repository root (`izlemefilt.png`, `izlemehata.png`, `login.png`, `loginarkaplan.png`, `misyoneklemikısmi.png`, `raporlarozet.png`, `tagfilt.png`)
+- Removed unused `package-lock.json` entry from backend
 
 ---
 

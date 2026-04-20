@@ -6,7 +6,7 @@ import {
   Search, X, SlidersHorizontal, Clock, UserX, ExternalLink, Stethoscope, CheckCircle, XCircle,
 } from 'lucide-react';
 
-type TabType   = 'WEBHOOK' | 'SYSTEM' | 'DIAG';
+type TabType   = 'SPEEDTEST' | 'SYSTEM' | 'DIAG';
 type TimeRange = '15m' | '1h' | '6h' | '24h' | '7d' | '30d';
 
 interface SystemLog {
@@ -51,6 +51,7 @@ const TIME_MS: Record<TimeRange, number> = {
   '7d': 7 * 86_400_000, '30d': 30 * 86_400_000,
 };
 
+
 function timeAgo(iso: string, bcp47: string, minUnit: string, hourUnit: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60)    return `${s}s`;
@@ -90,7 +91,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
   const bcp47 = LOCALE_BCP47[locale];
   const minUnit  = translate('time_unit_min');
   const hourUnit = translate('time_unit_hour');
-  const [tab, setTab]           = useState<TabType>('WEBHOOK');
+  const [tab, setTab]           = useState<TabType>('SPEEDTEST');
   const [sysLogs, setSysLogs]   = useState<SystemLog[]>([]);
   const [whkLogs, setWhkLogs]   = useState<WebhookLog[]>([]);
   const [loading, setLoading]   = useState(false);
@@ -107,7 +108,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
     setLoading(true);
     try {
       const [rw, rs] = await Promise.all([
-        fetch('/api/logs/webhooks'),
+        fetch('/api/logs/webhooks?isSdwan=false&limit=500'),
         fetch('/api/logs/system'),
       ]);
       const dw = await rw.json(); if (Array.isArray(dw)) setWhkLogs(dw);
@@ -165,52 +166,41 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
     return Array.from(seen).sort();
   }, [whkLogs]);
 
-  /* ── filtrelenmiş webhook listesi ── */
+  const speedtestLogs = whkLogs; // Backend zaten isSdwan=false filtresi uyguluyor
+
+  /* ── filtrelenmiş hız testi webhook listesi ── */
   const filteredWhk = useMemo(() => {
     const cutoff = Date.now() - TIME_MS[whkF.timeRange];
     const minSpd = whkF.minSpeed !== '' ? Number(whkF.minSpeed) : null;
     const q      = whkF.text.trim().toLowerCase();
 
-    return whkLogs.filter(log => {
+    return speedtestLogs.filter(log => {
       const p = log.parsedcontext || {};
-
-      // Zaman filtresi
       if (new Date(log.createdat).getTime() < cutoff) return false;
-
-      // Cihaz seçimi (dropdown)
       if (whkF.device && p.deviceName !== whkF.device) return false;
-
-      // Serbest metin arama: IP, VPN adı
       if (q) {
         const haystack = [log.sourceip, p.vpnName, p.deviceName].join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-
-      // VPN tipi
       if (whkF.vpnType) {
         const vn = (p.vpnName || '').toUpperCase();
-        const isGsm  = /GSM|LTE|4G|5G/.test(vn);
-        const isHub  = /\bHUB\b|_HUB|HUB_/.test(vn);
+        const isGsm   = /GSM|LTE|4G|5G/.test(vn);
+        const isHub   = /\bHUB\b|_HUB|HUB_/.test(vn);
         const isMetro = !isGsm && !isHub;
         if (whkF.vpnType === 'GSM'   && !isGsm)  return false;
         if (whkF.vpnType === 'METRO' && !isMetro) return false;
         if (whkF.vpnType === 'HUB'   && !isHub)   return false;
       }
-
-      // Minimum hız
       if (minSpd !== null) {
         const dl = p.downValue != null ? Number(p.downValue) : 0;
         if (dl < minSpd) return false;
       }
-
-      // Sadece bilinmeyenler
       if (whkF.unknownOnly && !isUnknown(p.deviceName)) return false;
-
       return true;
     });
-  }, [whkLogs, whkF, knownDeviceNames]);
+  }, [speedtestLogs, whkF, knownDeviceNames]);
 
-  /* ── filtrelenmiş system log listesi ── */
+/* ── filtrelenmiş system log listesi ── */
   const filteredSys = useMemo(() => {
     const cutoff = Date.now() - TIME_MS[sysF.timeRange];
     const q      = sysF.text.trim().toLowerCase();
@@ -228,11 +218,11 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
     });
   }, [sysLogs, sysF]);
 
-  const critCount       = sysLogs.filter(l => l.severity === 'CRITICAL' || l.severity === 'ERROR').length;
-  const unknownCount    = whkLogs.filter(l => isUnknown(l.parsedcontext?.deviceName)).length;
-  const whkBadge   = whkActiveCount(whkF);
-  const sysBadge   = sysActiveCount(sysF);
-  const activeBadge = tab === 'WEBHOOK' ? whkBadge : sysBadge;
+  const critCount    = sysLogs.filter(l => l.severity === 'CRITICAL' || l.severity === 'ERROR').length;
+  const unknownCount = speedtestLogs.filter(l => isUnknown(l.parsedcontext?.deviceName)).length;
+  const whkBadge    = whkActiveCount(whkF);
+  const sysBadge    = sysActiveCount(sysF);
+  const activeBadge = tab === 'SPEEDTEST' ? whkBadge : tab === 'SYSTEM' ? sysBadge : 0;
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }} className="fade-in">
@@ -249,7 +239,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {unknownCount > 0 && (
               <div
-                onClick={() => { setTab('WEBHOOK'); setWhkF(f => ({ ...f, unknownOnly: true })); }}
+                onClick={() => { setTab('SPEEDTEST'); setWhkF(f => ({ ...f, unknownOnly: true })); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--amber)', fontWeight: 600, cursor: 'pointer' }}
                 title="Bilinmeyen cihazları filtrele"
               >
@@ -262,7 +252,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--text-muted)' }}>
-              <Wifi size={12} /> {whkLogs.length} webhook
+              <Wifi size={12} /> {speedtestLogs.length} hız testi
             </div>
             <button className="btn btn-secondary btn-icon" onClick={fetch_logs} title="Yenile">
               <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
@@ -272,21 +262,24 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
 
         {/* Tabs + Zaman seçici */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {(['WEBHOOK', 'SYSTEM'] as const).map(t => (
-            <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`}
-              onClick={() => { setTab(t); setExpanded(null); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
-              {t === 'WEBHOOK' ? <Wifi size={13} /> : <Terminal size={13} />}
-              {t === 'WEBHOOK' ? translate('logs_webhook') : translate('logs_system')}
-              <span style={{
-                background: tab === t ? 'var(--accent)' : 'var(--bg-elevated)',
-                color: tab === t ? 'white' : 'var(--text-muted)',
-                borderRadius: 10, padding: '0 6px', fontSize: 10, fontWeight: 700,
-              }}>
-                {t === 'WEBHOOK' ? filteredWhk.length : filteredSys.length}
-              </span>
-            </button>
-          ))}
+          {/* Hız Testi */}
+          <button className={`tab-btn ${tab === 'SPEEDTEST' ? 'active' : ''}`}
+            onClick={() => { setTab('SPEEDTEST'); setExpanded(null); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
+            <Wifi size={13} /> Hız Testi
+            <span style={{ background: tab === 'SPEEDTEST' ? 'var(--accent)' : 'var(--bg-elevated)', color: tab === 'SPEEDTEST' ? 'white' : 'var(--text-muted)', borderRadius: 10, padding: '0 6px', fontSize: 10, fontWeight: 700 }}>
+              {filteredWhk.length}
+            </span>
+          </button>
+          {/* Sistem */}
+          <button className={`tab-btn ${tab === 'SYSTEM' ? 'active' : ''}`}
+            onClick={() => { setTab('SYSTEM'); setExpanded(null); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
+            <Terminal size={13} /> {translate('logs_system')}
+            <span style={{ background: tab === 'SYSTEM' ? 'var(--accent)' : 'var(--bg-elevated)', color: tab === 'SYSTEM' ? 'white' : 'var(--text-muted)', borderRadius: 10, padding: '0 6px', fontSize: 10, fontWeight: 700 }}>
+              {filteredSys.length}
+            </span>
+          </button>
           <button className={`tab-btn ${tab === 'DIAG' ? 'active' : ''}`}
             onClick={() => { setTab('DIAG'); setExpanded(null); }}
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
@@ -297,10 +290,10 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
           <div style={{ marginLeft: 'auto', display: tab === 'DIAG' ? 'none' : 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 6px' }}>
             <Clock size={11} color="var(--text-muted)" style={{ marginRight: 4 }} />
             {(Object.keys(TIME_LABELS) as TimeRange[]).map(tr => {
-              const active = tab === 'WEBHOOK' ? whkF.timeRange === tr : sysF.timeRange === tr;
+              const active = tab === 'SYSTEM' ? sysF.timeRange === tr : whkF.timeRange === tr;
               return (
                 <button key={tr}
-                  onClick={() => tab === 'WEBHOOK' ? setWhkF(f => ({ ...f, timeRange: tr })) : setSysF(f => ({ ...f, timeRange: tr }))}
+                  onClick={() => tab === 'SYSTEM' ? setSysF(f => ({ ...f, timeRange: tr })) : setWhkF(f => ({ ...f, timeRange: tr }))}
                   style={{
                     padding: '3px 9px', borderRadius: 4, fontSize: 11, fontWeight: active ? 700 : 400,
                     background: active ? 'var(--accent)' : 'transparent',
@@ -313,8 +306,8 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
             })}
           </div>
 
-          {/* Filtre toggle — DIAG sekmesinde gizle */}
-          {tab !== 'DIAG' && <button
+          {/* Filtre toggle — sadece SPEEDTEST ve SYSTEM'de göster */}
+          {(tab === 'SPEEDTEST' || tab === 'SYSTEM') && <button
             className="btn btn-secondary"
             onClick={() => setShowFilters(p => !p)}
             style={{
@@ -352,11 +345,11 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                 <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                 <input
                   type="text"
-                  placeholder={tab === 'WEBHOOK' ? 'Cihaz adı, IP veya VPN türü ara...' : 'Mesaj içeriği ara...'}
-                  value={tab === 'WEBHOOK' ? whkF.text : sysF.text}
-                  onChange={e => tab === 'WEBHOOK'
-                    ? setWhkF(f => ({ ...f, text: e.target.value }))
-                    : setSysF(f => ({ ...f, text: e.target.value }))}
+                  placeholder={tab === 'SYSTEM' ? 'Mesaj içeriği ara...' : 'Cihaz adı, IP veya VPN türü ara...'}
+                  value={tab === 'SYSTEM' ? sysF.text : whkF.text}
+                  onChange={e => tab === 'SYSTEM'
+                    ? setSysF(f => ({ ...f, text: e.target.value }))
+                    : setWhkF(f => ({ ...f, text: e.target.value }))}
                   style={{
                     width: '100%', padding: '7px 10px 7px 30px',
                     background: 'var(--bg-elevated)', border: '1px solid var(--border)',
@@ -368,9 +361,9 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                   onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
                   onBlur={e  => (e.target.style.borderColor = 'var(--border)')}
                 />
-                {(tab === 'WEBHOOK' ? whkF.text : sysF.text) && (
+                {(tab === 'SYSTEM' ? sysF.text : whkF.text) && (
                   <button
-                    onClick={() => tab === 'WEBHOOK' ? setWhkF(f => ({ ...f, text: '' })) : setSysF(f => ({ ...f, text: '' }))}
+                    onClick={() => tab === 'SYSTEM' ? setSysF(f => ({ ...f, text: '' })) : setWhkF(f => ({ ...f, text: '' }))}
                     style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2 }}>
                     <X size={12} />
                   </button>
@@ -381,7 +374,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               {activeBadge > 0 && (
                 <button
                   className="btn btn-secondary"
-                  onClick={() => tab === 'WEBHOOK' ? setWhkF(EMPTY_WHK) : setSysF(EMPTY_SYS)}
+                  onClick={() => tab === 'SYSTEM' ? setSysF(EMPTY_SYS) : setWhkF(EMPTY_WHK)}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '7px 12px', whiteSpace: 'nowrap', color: 'var(--red)', borderColor: 'rgba(239,68,68,0.3)' }}>
                   <X size={12} /> Filtreleri Temizle
                 </button>
@@ -392,7 +385,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
 
               {/* Webhook: Cihaz seçimi */}
-              {tab === 'WEBHOOK' && deviceOptions.length > 0 && (
+              {tab === 'SPEEDTEST' && deviceOptions.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 4px 3px 10px' }}>
                   <Activity size={11} color="var(--text-muted)" />
                   <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>Cihaz</span>
@@ -425,7 +418,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               )}
 
               {/* Webhook: VPN tipi */}
-              {tab === 'WEBHOOK' && (
+              {tab === 'SPEEDTEST' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 10px 3px 8px' }}>
                   <Wifi size={11} color="var(--text-muted)" />
                   <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Tür</span>
@@ -453,7 +446,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               )}
 
               {/* Webhook: Sadece bilinmeyenler */}
-              {tab === 'WEBHOOK' && unknownCount > 0 && (
+              {tab === 'SPEEDTEST' && unknownCount > 0 && (
                 <button
                   onClick={() => setWhkF(f => ({ ...f, unknownOnly: !f.unknownOnly }))}
                   style={{
@@ -469,7 +462,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               )}
 
               {/* Webhook: Minimum hız */}
-              {tab === 'WEBHOOK' && (
+              {tab === 'SPEEDTEST' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 4px 3px 10px' }}>
                   <ArrowDown size={11} color="var(--text-muted)" />
                   <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>Min. Hız</span>
@@ -551,9 +544,9 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
             {/* Sonuç özeti */}
             <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ color: 'var(--accent)', fontWeight: 700 }}>
-                {tab === 'WEBHOOK' ? filteredWhk.length : filteredSys.length}
+                {tab === 'SYSTEM' ? filteredSys.length : filteredWhk.length}
               </span>
-              / {tab === 'WEBHOOK' ? whkLogs.length : sysLogs.length} kayıt gösteriliyor
+              / {tab === 'SYSTEM' ? sysLogs.length : speedtestLogs.length} kayıt gösteriliyor
               {activeBadge > 0 && <span>· <b>{activeBadge}</b> aktif filtre</span>}
             </div>
           </div>
@@ -564,7 +557,10 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px 16px' }}>
 
         {/* Empty */}
-        {!loading && tab !== 'DIAG' && (tab === 'WEBHOOK' ? filteredWhk : filteredSys).length === 0 && (
+        {!loading && tab !== 'DIAG' && (
+          (tab === 'SPEEDTEST' && filteredWhk.length === 0) ||
+          (tab === 'SYSTEM'    && filteredSys.length === 0)
+        ) && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: '60%', color: 'var(--text-muted)', paddingTop: 16 }}>
             <Activity size={36} style={{ opacity: 0.2 }} />
             <p style={{ fontSize: 13 }}>
@@ -572,7 +568,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
             </p>
             {activeBadge > 0 && (
               <button className="btn btn-secondary"
-                onClick={() => tab === 'WEBHOOK' ? setWhkF(EMPTY_WHK) : setSysF(EMPTY_SYS)}
+                onClick={() => tab === 'SYSTEM' ? setSysF(EMPTY_SYS) : setWhkF(EMPTY_WHK)}
                 style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <X size={12} /> Filtreleri temizle
               </button>
@@ -580,8 +576,8 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
           </div>
         )}
 
-        {/* ── WEBHOOK rows ── */}
-        {tab === 'WEBHOOK' && filteredWhk.length > 0 && (
+{/* ── SPEEDTEST rows ── */}
+        {tab === 'SPEEDTEST' && filteredWhk.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Kolon başlıkları — sticky: scroll edince üstte sabit kalır */}
             <div style={{
