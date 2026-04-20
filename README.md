@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.11.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.11.0)
+[![Version](https://img.shields.io/badge/version-1.12.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.12.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -275,6 +275,28 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.12.0 — 2026-04-20
+
+**Arc Anti-Meridian Fix, Tag UX Overhaul, Mission Data Filter, Unknown Device Fix**
+
+#### 🗺️ Map — Arc Anti-Meridian Fix
+- **Great-circle arc longitude unwrap** — When zooming out, arc lines no longer wrap around the globe the "long way." Each computed arc point is now normalized so the longitude series stays continuous, preventing MapLibre from drawing lines across the anti-meridian (180° boundary).
+
+#### 🏷️ Tag UX — Correct Placement
+- **Popup** — Tag badges moved from the "📶 GSM" row to directly beneath the mission name. Tags no longer appear to belong to the GSM connection type.
+- **Left detail panel** — Tags moved from inside the GSM card to the mission name header card at the top of the panel.
+
+#### 🔍 Mission Manager — Data Status Filter
+- **"Veri:" filter row** added to the search bar area with three buttons: **Tümü** (all) · **Veri Alınan** (missions with any speed data) · **Veri Gelmeyen** (missions with no speed data).
+- Works in combination with text search and tag filter simultaneously.
+
+#### 🔧 Webhook — Unknown Device Fix
+- `queryDevice` URL parameter (`?device=CIHAZ_ADI`) is now used as a fallback for speed-test webhooks (was already used for SDWAN, now consistent).
+- When device name cannot be extracted from any source, the response is `PARSE_ERROR` (not `UNKNOWN_DEVICE`) — no phantom `"UNKNOWN"` entry appears in the Kayıtsız Cihazlar pending list.
+- Frontend filters out `deviceName === "UNKNOWN"` on both startup (localStorage cleanup) and new WebSocket events.
+
+---
 
 ### v1.7.0 — 2026-04-17
 

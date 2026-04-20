@@ -4,6 +4,53 @@ All notable changes to FORTSPEED are documented here.
 
 ---
 
+## [v1.12.0] — 2026-04-20
+
+### Arc Anti-Meridian Fix, Tag UX, Mission Data Filter, Unknown Device Fix
+
+#### Harita
+- **Arc anti-meridian düzeltmesi** — Harita küçültüldüğünde arc çizgilerinin yanlış yönde (dünya etrafını dolaşarak) çizilmesi sorunu giderildi. Great-circle arc koordinatları artık sürekli boylam serisi üretecek şekilde "unwrap" ediliyor.
+- **Tag konumlandırması** — Misyon popup'ında ve sol detay panelinde taglar GSM bölümünden çıkarıldı, misyon adının yanına taşındı. Tagların GSM'e ait görünmesi sorununu ortadan kaldırır.
+
+#### Misyon Yönetimi
+- **Veri durumu filtresi** — Arama çubuğuna "Veri: Tümü / Veri Alınan / Veri Gelmeyen" filtre butonları eklendi. Metin araması ve tag filtresiyle birlikte çalışır.
+- **Bilinmeyen cihaz düzeltmesi** — Payload'dan cihaz adı parse edilemediğinde artık `UNKNOWN_DEVICE` yerine `PARSE_ERROR` döndürülüyor; `UNKNOWN` adlı sahte kayıtlar pending listeye eklenmiyor. SpeedTest webhook'u artık `?device=CIHAZ_ADI` URL parametresini de fallback olarak kullanıyor.
+
+---
+
+## [v1.11.0] — 2026-04-20
+
+### Auth Manager, 4-Tier Arc Renkleri, Veri Yok Renk Düzeltmesi
+
+#### Kimlik Doğrulama
+- **LDAP & Keycloak entegrasyonu** — AdminSettings → Kimlik Doğrulama sekmesinden Local / LDAP / Keycloak sağlayıcısı seçilebilir. LDAP bind testi ve Keycloak ROPC / Authorization Code akışı destekleniyor.
+- **AuthConfig tablosu** — Tek satır kısıtlı `AuthConfig` tablosu migration ile oluşturuluyor; provider + JSONB config saklanıyor.
+- **LoginScreen** — `/api/auth/login` endpoint'i üzerinden backend doğrulama; Keycloak yapılandırıldığında "Keycloak ile Giriş Yap" butonu görünür.
+
+#### Harita Renk Sistemi
+- **`hasAnyData()` helper** — GSM / Metro / Hub'dan en az biri null değilse `true` döner.
+- **`getBestDownload()` helper** — Üç bağlantı türünden en yüksek download değerini döndürür.
+- **4 kademeli hız sınıfı** — `nodata` (gri) / `poor` (kırmızı) / `good` (turuncu) / `excellent` (mavi). Verisi olmayan misyonlar artık kırmızı değil gri görünür.
+- **Arc çizgileri** — `arcByTier` hesaplaması `getTierId()` fonksiyonunu kullanıyor; null download değerleri artık 0 Mbps (zayıf sinyal) olarak yanlış sınıflandırılmıyor.
+- **Ping animasyonu** — `marker-pulse` CSS sınıfı yalnızca `hasAnyData()` true olan misyonlara uygulanıyor.
+
+#### Eser Telekom
+- Provider ikon seçiciye "Eser Telekom A.Ş." eklendi (`/icons/esertelekom.svg`).
+- `Tags.Icon` kolonu `VARCHAR(20)` → `VARCHAR(200)` genişletildi.
+
+---
+
+## [v1.10.0] — 2026-04-20
+
+### i18n Locale Propagation, Güvenlik Düzeltmeleri
+
+- **Tam locale yayılımı** — `useLanguage()` hook'undan gelen locale tüm bileşenlere (`toLocaleString`, `toLocaleTimeString`, `toLocaleDateString`) iletiliyor; TR/EN/FR/AR sayı ve tarih formatları tutarlı hale getirildi.
+- **CodeQL güvenlik düzeltmeleri** — GitHub Code Scanning uyarıları kapatıldı (RegEx backtrack riskleri, log injection, eksik rate-limit açıklamaları).
+- **Misyon istatistikleri** — MissionManager başlığına "Toplam / Veri Alınan / Veri Gelmeyen" kart istatistikleri ve kapsama yüzdesi çubuğu eklendi.
+- **Tag göster/gizle** — AdminSettings → Harita sekmesine marker üzerindeki tag rozetlerini açıp kapatan toggle eklendi (`showTags` ayarı).
+
+---
+
 ## [v1.9.0] — 2026-04-19
 
 ### Refactor: Modular Route Architecture
