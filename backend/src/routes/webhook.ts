@@ -302,7 +302,13 @@ export async function registerWebhookRoutes(
     // ── SPEED TEST ────────────────────────────────────────────────────────────
     try {
       const parsed = parseSpeedTestBody(rawBody);
-      const deviceName = (parsed.deviceName || 'UNKNOWN').trim();
+      const deviceName = (parsed.deviceName || queryDevice || '').trim();
+      if (!deviceName) {
+        const msg = 'SpeedTest payload alındı ancak cihaz adı çıkarılamadı. URL\'ye ?device=CIHAZ_ADI ekleyin.';
+        fastify.log.warn(msg);
+        await dbLog('WARN', msg, { rawBody: rawBody.slice(0, 400) });
+        return reply.status(400).send({ status: 'PARSE_ERROR', message: msg });
+      }
       const vpnTypeName = resolveVpnType(parsed.vpnName);
       const uploadMbps   = parsed.upValue && parsed.upUnit ? convertToMbps(parsed.upValue, parsed.upUnit) : null;
       const downloadMbps = parsed.downValue && parsed.downUnit ? convertToMbps(parsed.downValue, parsed.downUnit) : null;

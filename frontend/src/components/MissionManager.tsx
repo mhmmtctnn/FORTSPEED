@@ -432,6 +432,7 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch]       = useState('');
   const [tagFilter, setTagFilter] = useState<number[]>([]);
+  const [dataFilter, setDataFilter] = useState<'all' | 'with_data' | 'no_data'>('all');
   const [showAdd, setShowAdd]     = useState(false);
   const [form, setForm] = useState<Omit<CityRow, 'id'>>(emptyForm);
   const [editing, setEditing] = useState<CityRow | null>(null);
@@ -504,12 +505,18 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
         const cityTagIds = (c.tags ?? []).map((tg: any) => typeof tg === 'object' ? tg.id : tg);
         if (!tagFilter.every(id => cityTagIds.includes(id))) return false;
       }
+      if (dataFilter !== 'all') {
+        const mission = missions.find(m => m.id === c.id);
+        const hasData = mission ? hasAnyData(mission) : false;
+        if (dataFilter === 'with_data' && !hasData) return false;
+        if (dataFilter === 'no_data'   &&  hasData) return false;
+      }
       return true;
     })
     .sort((a, b) => {
       const mul = sortDir === 'asc' ? 1 : -1;
       return (a.name ?? '').localeCompare(b.name ?? '') * mul;
-    }), [cityList, search, tagFilter, sortDir]);
+    }), [cityList, search, tagFilter, dataFilter, missions, sortDir]);
 
   const handleAdd = async () => {
     setError('');
@@ -834,6 +841,39 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
             )}
           </div>
         )}
+        {/* Veri durumu filtresi */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+            Veri:
+          </span>
+          {([
+            { key: 'all',       label: 'Tümü',           color: 'var(--accent)',  dot: null },
+            { key: 'with_data', label: 'Veri Alınan',    color: '#22c55e',        dot: '#22c55e' },
+            { key: 'no_data',   label: 'Veri Gelmeyen',  color: '#6b7280',        dot: '#6b7280' },
+          ] as const).map(opt => {
+            const active = dataFilter === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setDataFilter(opt.key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '3px 10px', borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer', fontSize: '0.75rem',
+                  background: active ? `${opt.color}22` : 'var(--bg-elevated)',
+                  border: `1px solid ${active ? opt.color : 'var(--border)'}`,
+                  color: active ? opt.color : 'var(--text-muted)',
+                  fontWeight: active ? 700 : 400,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {opt.dot && <span style={{ width: 7, height: 7, borderRadius: '50%', background: opt.dot, display: 'inline-block', flexShrink: 0 }} />}
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Success */}

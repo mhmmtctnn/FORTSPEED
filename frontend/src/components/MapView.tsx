@@ -77,6 +77,7 @@ function greatCircleArc(
   ));
   if (d === 0) return [from, to];
   const pts: [number, number][] = [];
+  let prevLon: number | null = null;
   for (let i = 0; i <= steps; i++) {
     const f = i / steps;
     const A = Math.sin((1 - f) * d) / Math.sin(d);
@@ -84,7 +85,15 @@ function greatCircleArc(
     const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
     const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
     const z = A * Math.sin(lat1) + B * Math.sin(lat2);
-    pts.push([toDeg(Math.atan2(y, x)), toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)))]);
+    let lon = toDeg(Math.atan2(y, x));
+    const lat = toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)));
+    if (prevLon !== null) {
+      const diff = lon - prevLon;
+      if (diff > 180) lon -= 360;
+      else if (diff < -180) lon += 360;
+    }
+    prevLon = lon;
+    pts.push([lon, lat]);
   }
   return pts;
 }
@@ -698,7 +707,18 @@ export default function MapView({
           ) : (
             <div className="fade-in">
               <div className="glass-card" style={{ padding: '16px', marginBottom: '12px' }}>
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--accent)', marginBottom: '4px' }}>{selectedMission.name}</div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: '4px' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--accent)' }}>{selectedMission.name}</div>
+                  {getMissionTags(selectedMission).length > 0 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {getMissionTags(selectedMission).map(tag => (
+                        <span key={tag.id} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', fontWeight: 700, color: tag.color, background: `${tag.color}1e`, border: `1px solid ${tag.color}59`, borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                          {renderTagIcon(tag.icon, 12)} {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
                   {selectedMission.city || '–'} · {selectedMission.country || '–'}
                 </div>
@@ -734,13 +754,6 @@ export default function MapView({
                 </div>
                 <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
                   {selectedMission.gsm_device && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}><HardDrive size={10}/>{selectedMission.gsm_device}</span>}
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {getMissionTags(selectedMission).map(tag => (
-                      <span key={tag.id} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', fontWeight: 700, color: tag.color, background: `${tag.color}1e`, border: `1px solid ${tag.color}59`, borderRadius: 4, padding: '2px 6px' }}>
-                        {renderTagIcon(tag.icon, 14)} {tag.name}
-                      </span>
-                    ))}
-                  </div>
                   <span className={`quality-pill ${getQualityClass(selectedMission.gsm_download)}`} style={{ marginLeft: 'auto' }}>{getQualityLabel(selectedMission.gsm_download)}</span>
                 </div>
               </div>
@@ -1139,14 +1152,18 @@ export default function MapView({
           {popupInfo && (
             <Popup longitude={popupInfo.lon} latitude={popupInfo.lat} anchor="bottom" onClose={() => onSetPopup(null)} closeButton>
               <div style={{ padding: '12px 14px', minWidth: '200px' }}>
-                <div style={{ fontWeight: 800, color: 'var(--accent)', marginBottom: '8px', fontSize: '0.85rem' }}>{popupInfo.name}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginBottom: '3px' }}>
+                <div style={{ fontWeight: 800, color: 'var(--accent)', fontSize: '0.85rem' }}>{popupInfo.name}</div>
+                {getMissionTags(popupInfo).length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '5px 0 8px' }}>
+                    {getMissionTags(popupInfo).map(tag => (
+                      <span key={tag.id} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: '0.6rem', fontWeight: 700, color: tag.color, background: `${tag.color}26`, border: `1px solid ${tag.color}4d`, borderRadius: 3, padding: '1px 4px' }}>
+                        {renderTagIcon(tag.icon, 12)} {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: '3px', marginTop: getMissionTags(popupInfo).length > 0 ? 0 : '8px' }}>
                   <span style={{ fontSize: '0.72rem', color: 'var(--purple)', fontWeight: 700 }}>📶 GSM</span>
-                  {getMissionTags(popupInfo).map(tag => (
-                    <span key={tag.id} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: '0.6rem', fontWeight: 700, color: tag.color, background: `${tag.color}26`, border: `1px solid ${tag.color}4d`, borderRadius: 3, padding: '1px 4px' }}>
-                      {renderTagIcon(tag.icon, 12)} {tag.name}
-                    </span>
-                  ))}
                 </div>
                 <div style={{ fontSize: '0.75rem', marginBottom: '6px' }}>
                   ↓ <b>{popupInfo.gsm_download != null ? Number(popupInfo.gsm_download).toFixed(1) : '–'}</b> / ↑ <b>{popupInfo.gsm_upload != null ? Number(popupInfo.gsm_upload).toFixed(1) : '–'}</b> Mbps · ⏱ {popupInfo.gsm_latency != null ? Number(popupInfo.gsm_latency).toFixed(0) : '–'} ms

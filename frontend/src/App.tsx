@@ -99,7 +99,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
 
   // Kalıcı bilinmeyen cihaz kuyruğu — localStorage'da saklanır
   const [pendingDevices, setPendingDevices] = useState<UnknownDeviceAlert[]>(() => {
-    try { const s = localStorage.getItem('speedtest_pending_devices'); return s ? JSON.parse(s) : []; }
+    try {
+      const s = localStorage.getItem('speedtest_pending_devices');
+      const parsed: UnknownDeviceAlert[] = s ? JSON.parse(s) : [];
+      return parsed.filter(d => d.deviceName && d.deviceName !== 'UNKNOWN');
+    }
     catch { return []; }
   });
   useEffect(() => {
@@ -137,6 +141,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
 
       // Bilinmeyen cihaz uyarısı
       if (msg.type === 'unknown_device') {
+        if (!msg.deviceName || msg.deviceName === 'UNKNOWN') return;
         const entry: UnknownDeviceAlert = {
           id: `alert-${Date.now()}`,
           deviceName: msg.deviceName,
