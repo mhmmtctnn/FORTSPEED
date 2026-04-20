@@ -5,6 +5,7 @@ import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 import Redis from 'ioredis';
 import { registerItaiMiddleware } from './middleware/itai';
+import { registerAuthRoutes } from './routes/auth';
 import { registerTagRoutes } from './routes/tags';
 import { registerCityRoutes } from './routes/cities';
 import { registerLogRoutes } from './routes/logs';
@@ -92,6 +93,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   // Reporting API — routes/reports.ts
   await registerReportRoutes(fastify);
+
+  // 11. Auth — routes/auth.ts
+  await registerAuthRoutes(fastify);
 
   // 12. Tags CRUD — routes/tags.ts
   await registerTagRoutes(fastify);

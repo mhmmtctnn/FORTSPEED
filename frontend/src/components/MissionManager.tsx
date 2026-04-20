@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import { List, Plus, Pencil, Trash2, Check, X, MapPin, Tag, Upload, Download, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
-import { CityRow, MissionTag } from '../types';
-import { useTags } from '../hooks/useQueries';
+import { CityRow, MissionTag, hasAnyData } from '../types';
+import { useTags, useMissions } from '../hooks/useQueries';
 import { renderTagIcon } from './TagsManager';
 
 // ── Geo Data: Kıta → Ülke listesi ───────────────────────────────────────────
@@ -428,9 +428,11 @@ const FIELD_LABELS: Record<string, string> = { name: 'Misyon Adı *', continent:
 export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pendingDevices = [], onDismissPending }: Props) {
   const t = useT();
   const { data: allTags = [] } = useTags();
+  const { data: missions = [] } = useMissions();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [search, setSearch] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
+  const [search, setSearch]       = useState('');
+  const [tagFilter, setTagFilter] = useState<number[]>([]);
+  const [showAdd, setShowAdd]     = useState(false);
   const [form, setForm] = useState<Omit<CityRow, 'id'>>(emptyForm);
   const [editing, setEditing] = useState<CityRow | null>(null);
   const [error, setError] = useState('');
@@ -490,14 +492,24 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
 
   const filtered = useMemo(() => cityList
     .filter(c => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return (c.name ?? '').toLowerCase().includes(q) || (c.country ?? '').toLowerCase().includes(q) || (c.continent ?? '').toLowerCase().includes(q) || (c.type ?? '').toLowerCase().includes(q);
+      if (search) {
+        const q = search.toLowerCase();
+        const textMatch = (c.name ?? '').toLowerCase().includes(q)
+          || (c.country ?? '').toLowerCase().includes(q)
+          || (c.continent ?? '').toLowerCase().includes(q)
+          || (c.type ?? '').toLowerCase().includes(q);
+        if (!textMatch) return false;
+      }
+      if (tagFilter.length > 0) {
+        const cityTagIds = (c.tags ?? []).map((tg: any) => typeof tg === 'object' ? tg.id : tg);
+        if (!tagFilter.every(id => cityTagIds.includes(id))) return false;
+      }
+      return true;
     })
     .sort((a, b) => {
       const mul = sortDir === 'asc' ? 1 : -1;
       return (a.name ?? '').localeCompare(b.name ?? '') * mul;
-    }), [cityList, search, sortDir]);
+    }), [cityList, search, tagFilter, sortDir]);
 
   const handleAdd = async () => {
     setError('');
@@ -551,7 +563,7 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
       <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileSelect} />
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <List size={22} color="var(--accent)"/>
           <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{t('missions_title')}</h1>
@@ -573,6 +585,47 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
           </button>
         </div>
       </div>
+
+      {/* ── Veri durumu istatistik kartları ── */}
+      {(() => {
+        const withData    = missions.filter(m => hasAnyData(m)).length;
+        const noData      = cityList.length - withData;
+        const pct         = cityList.length > 0 ? Math.round((withData / cityList.length) * 100) : 0;
+        const cards = [
+          { label: 'Toplam Misyon',   value: cityList.length, color: 'var(--accent)',  bg: 'var(--accent-dim)',      border: 'rgba(56,189,248,0.25)' },
+          { label: 'Veri Alınan',     value: withData,        color: 'var(--green)',   bg: 'var(--green-dim)',       border: 'rgba(34,197,94,0.25)'  },
+          { label: 'Veri Alınamayan', value: noData,          color: noData > 0 ? '#6b7280' : 'var(--green)', bg: noData > 0 ? 'rgba(107,114,128,0.1)' : 'var(--green-dim)', border: noData > 0 ? 'rgba(107,114,128,0.25)' : 'rgba(34,197,94,0.25)' },
+        ];
+        return (
+          <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexShrink: 0, flexWrap: 'wrap' }}>
+            {cards.map(c => (
+              <div key={c.label} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 18px', borderRadius: 'var(--radius-sm)',
+                background: c.bg, border: `1px solid ${c.border}`, flex: '1 1 140px',
+              }}>
+                <span style={{ fontSize: '1.5rem', fontWeight: 800, color: c.color, lineHeight: 1 }}>{c.value}</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.3 }}>{c.label}</span>
+              </div>
+            ))}
+            {/* Doluluk çubuğu */}
+            <div style={{ flex: '2 1 200px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 5, padding: '10px 18px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                <span>Kapsama Oranı</span>
+                <span style={{ color: pct === 100 ? 'var(--green)' : pct >= 50 ? 'var(--accent)' : '#f97316' }}>{pct}%</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-surface)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: 3,
+                  width: `${pct}%`,
+                  background: pct === 100 ? 'var(--green)' : pct >= 50 ? 'var(--accent)' : '#f97316',
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Bekleyen Bilinmeyen Cihazlar ── */}
       {pendingDevices.length > 0 && (
@@ -733,14 +786,55 @@ export default function MissionManager({ cityList, onAdd, onUpdate, onDelete, pe
         </div>
       )}
 
-      {/* Search */}
-      <input
-        className="form-control"
-        placeholder={t('search') + '...'}
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        style={{ marginBottom: '16px', flexShrink: 0 }}
-      />
+      {/* Search + Tag filtre */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, flexShrink: 0 }}>
+        <input
+          className="form-control"
+          placeholder={t('search') + '...'}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ margin: 0 }}
+        />
+        {allTags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+              <Tag size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />Tag:
+            </span>
+            {allTags.map(tag => {
+              const active = tagFilter.includes(tag.id);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => setTagFilter(prev => active ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '3px 10px', borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer', fontSize: '0.75rem',
+                    background: active ? `${tag.color}22` : 'var(--bg-elevated)',
+                    border: `1px solid ${active ? tag.color : 'var(--border)'}`,
+                    color: active ? tag.color : 'var(--text-muted)',
+                    fontWeight: active ? 700 : 400,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {renderTagIcon(tag.icon, 13)}
+                  {tag.name}
+                </button>
+              );
+            })}
+            {tagFilter.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTagFilter([])}
+                style={{ padding: '3px 8px', borderRadius: 'var(--radius-sm)', background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <X size={10} /> Temizle
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Success */}
       {success && (

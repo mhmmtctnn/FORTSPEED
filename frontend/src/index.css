@@ -410,4 +410,33 @@ select.form-control { cursor: pointer; }
 }
 .marker-pulse { animation: mission-pulse 2.5s ease-in-out infinite; }
 
+/* Speedtest ripple — yeni ölçüm geldiğinde marker'dan yayılan halkalar */
+@keyframes speedtest-ripple {
+  0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(6);   opacity: 0;   }
+}
+
+/* Marker pop — nokta kısa süre büyüyüp geri döner */
+@keyframes speedtest-marker-pop {
+  0%   { transform: scale(1);   }
+  20%  { transform: scale(1.9); }
+  55%  { transform: scale(0.85); }
+  80%  { transform: scale(1.1); }
+  100% { transform: scale(1);   }
+}
+
+/* Flash overlay — parlak iç daire hızla söner */
+@keyframes speedtest-flash {
+  0%   { opacity: 0.75; transform: translate(-50%, -50%) scale(1);   }
+  100% { opacity: 0;    transform: translate(-50%, -50%) scale(1.6); }
+}
+
+/* Hız etiketi — yukarı kayarak söner */
+@keyframes speedtest-label {
+  0%   { opacity: 0;   transform: translateX(-50%) translateY(0px);  }
+  15%  { opacity: 1;   transform: translateX(-50%) translateY(-4px);  }
+  75%  { opacity: 1;   transform: translateX(-50%) translateY(-12px); }
+  100% { opacity: 0;   transform: translateX(-50%) translateY(-20px); }
+}
+
 

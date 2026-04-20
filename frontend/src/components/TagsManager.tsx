@@ -21,10 +21,11 @@ const QUICK_ICONS = [
 
 // Bilinen sağlayıcı logoları (local — /public/icons/)
 const PROVIDER_ICONS = [
-  { label: 'Starlink', url: '/icons/starlink.svg' },
-  { label: 'TTI',      url: '/icons/tti.svg' },
-  { label: 'Türksat',  url: '/icons/turksat.svg' },
-  { label: 'Uydunet',  url: '/icons/uydunet.svg' },
+  { label: 'Starlink',       url: '/icons/starlink.svg' },
+  { label: 'TTI',            url: '/icons/tti.svg' },
+  { label: 'Türksat',        url: '/icons/turksat.svg' },
+  { label: 'Uydunet',        url: '/icons/uydunet.svg' },
+  { label: 'Eser Telekom A.Ş.', url: '/icons/esertelekom.svg' },
 ];
 
 // URL veya local path mi, emoji mi — buna göre render et

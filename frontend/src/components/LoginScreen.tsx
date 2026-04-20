@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ShieldCheck, Lock, User, Eye, EyeOff, Wifi } from 'lucide-react';
+import { ShieldCheck, Lock, User, Eye, EyeOff, Wifi, ExternalLink } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type GeoRing     = [number, number][];
@@ -484,19 +484,82 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
   }, [draw]);
 
   // ── Auth ──────────────────────────────────────────────────────────────────────
-  const PASS = localStorage.getItem('fortspeed_password') || 'admin';
+  const [kcRedirect, setKcRedirect] = useState(false); // keycloak code-flow configured
+
+  // Load auth config to know if Keycloak redirect flow is active
+  useEffect(() => {
+    fetch('/api/auth/config')
+      .then(r => r.ok ? r.json() : null)
+      .then((cfg: any) => {
+        if (cfg?.provider === 'keycloak' && cfg?.config?.keycloak?.flow === 'code') {
+          setKcRedirect(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Handle Keycloak authorization-code callback (?kccode=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('kccode');
+    if (!code) return;
+    setLoading(true);
+    const redirectUri = `${window.location.origin}${window.location.pathname}?kccode=_`;
+    fetch('/api/auth/keycloak-exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, redirectUri }),
+    })
+      .then(r => r.json())
+      .then((data: any) => {
+        if (data.ok) {
+          sessionStorage.setItem('fortspeed_auth', '1');
+          window.history.replaceState({}, '', window.location.pathname);
+          onLogin();
+        } else {
+          setError(data.error || 'Keycloak doğrulaması başarısız');
+          setLoading(false);
+          setShake(true);
+          setTimeout(() => setShake(false), 600);
+        }
+      })
+      .catch(() => { setError('Keycloak bağlantı hatası'); setLoading(false); });
+  }, [onLogin]);
+
+  const handleKeycloakRedirect = async () => {
+    setLoading(true);
+    const redirectUri = `${window.location.origin}${window.location.pathname}?kccode=_`;
+    try {
+      const r = await fetch(`/api/auth/keycloak-url?redirectUri=${encodeURIComponent(redirectUri)}`);
+      const data = await r.json() as any;
+      if (data.url) window.location.href = data.url;
+      else { setError(data.error || 'Keycloak URL alınamadı'); setLoading(false); }
+    } catch { setError('Keycloak bağlantı hatası'); setLoading(false); }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(''); setLoading(true);
-    await new Promise(r => setTimeout(r, 650));
-    if (username.trim() === 'admin' && password === PASS) {
-      sessionStorage.setItem('fortspeed_auth', '1');
-      onLogin();
-    } else {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      const data = await res.json() as any;
+      if (data.ok) {
+        sessionStorage.setItem('fortspeed_auth', '1');
+        onLogin();
+      } else {
+        setLoading(false);
+        setShake(true);
+        setError(data.error || 'Kullanıcı adı veya şifre hatalı');
+        setTimeout(() => setShake(false), 600);
+      }
+    } catch {
       setLoading(false);
       setShake(true);
-      setError('Kullanıcı adı veya şifre hatalı');
+      setError('Sunucuya bağlanılamadı');
       setTimeout(() => setShake(false), 600);
     }
   };
@@ -632,6 +695,20 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
                 <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(239,68,68,0.09)', border: '1px solid rgba(239,68,68,0.28)', borderRadius: 8, color: '#f87171', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span>⚠</span> {error}
                 </div>
+              )}
+
+              {/* Keycloak redirect button */}
+              {kcRedirect && (
+                <button type="button" onClick={handleKeycloakRedirect} disabled={loading}
+                  style={{
+                    width: '100%', padding: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                    background: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.32)', borderRadius: 10,
+                    color: '#38bdf8', fontSize: '0.88rem', fontWeight: 600, fontFamily: 'inherit',
+                    cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 10,
+                    opacity: loading ? 0.5 : 1, transition: 'all 0.2s',
+                  }}>
+                  <ExternalLink size={15} /> Keycloak ile Giriş Yap
+                </button>
               )}
 
               {/* Submit */}

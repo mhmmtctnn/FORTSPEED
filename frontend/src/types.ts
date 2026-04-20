@@ -133,7 +133,11 @@ export const getBestDownload = (m: Mission) =>
 export const getBestUpload = (m: Mission) =>
   Math.max(Number(m.gsm_upload ?? 0), Number(m.metro_upload ?? 0), Number(m.hub_upload ?? 0));
 
+export const hasAnyData = (m: Mission) =>
+  m.gsm_download != null || m.metro_download != null || m.hub_download != null;
+
 export const getMarkerColor = (m: Mission) => {
+  if (!hasAnyData(m)) return '#6b7280'; // gri — veri yok
   const best = getBestDownload(m);
   return best >= 60 ? '#38bdf8' : best >= 30 ? '#f97316' : '#ef4444';
 };

@@ -26,6 +26,7 @@ interface AppSettings {
   showFlags: boolean;
   showHeatmap: boolean;
   showArcs: boolean;
+  showTags: boolean;
   theme?: 'dark' | 'light';
   merkezFW?: { lat: number; lon: number; name: string };
   locale?: string;
@@ -71,8 +72,8 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
     try {
       const s = localStorage.getItem('speedtest_settings');
       const parsed = s ? JSON.parse(s) : null;
-      return parsed ?? { showFlags: true, showHeatmap: false, showArcs: true, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } };
-    } catch { return { showFlags: true, showHeatmap: false, showArcs: true, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } }; }
+      return parsed ?? { showFlags: true, showHeatmap: false, showArcs: true, showTags: true, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } };
+    } catch { return { showFlags: true, showHeatmap: false, showArcs: true, showTags: true, theme: 'dark', merkezFW: { lat: 39.93, lon: 32.86, name: 'Merkez FW (Ankara)' } }; }
   });
 
   useEffect(() => {
@@ -93,6 +94,8 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   const [popupInfo, setPopupInfo] = useState<Mission | null>(null);
   const [activityFeed, setActivityFeed] = useState<ActivityEntry[]>([]);
   const [alerts, setAlerts] = useState<UnknownDeviceAlert[]>([]);
+  // cityId → {color, download}; yeni speedtest gelince 3s boyunca animasyon
+  const [flashCities, setFlashCities] = useState<Map<number, { color: string; download: number }>>(new Map());
 
   // Kalıcı bilinmeyen cihaz kuyruğu — localStorage'da saklanır
   const [pendingDevices, setPendingDevices] = useState<UnknownDeviceAlert[]>(() => {
@@ -124,7 +127,8 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   // WebSocket
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | null>(null);
-  const lastInvalidateRef = useRef<number>(0);
+  const lastInvalidateRef       = useRef<number>(0);
+  const lastReportInvalidateRef = useRef<number>(0);
 
   const connectWS = useCallback(() => {
     ws.current = new WebSocket(WS_URL);
@@ -176,6 +180,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         return { ...prev, ...speedPatch };
       });
 
+      // Harita animasyonu — hız sonucuna göre renklendir, 3s sonra temizle
+      const rippleColor = u.download >= 60 ? '#22c55e' : u.download >= 30 ? '#f97316' : '#ef4444';
+      setFlashCities(prev => new Map(prev).set(u.cityId, { color: rippleColor, download: u.download }));
+      setTimeout(() => setFlashCities(prev => { const n = new Map(prev); n.delete(u.cityId); return n; }), 3000);
+
       const vpnKey: VpnTab | null = isGsm ? 'GSM' : isMetro ? 'METRO' : isHub ? 'HUB' : null;
       if (vpnKey) {
         const point: StatPoint = { time: new Date(u.time).toLocaleTimeString(bcp47), download: u.download, upload: u.upload, latency: u.latency, vpn_type: vpnKey };
@@ -199,12 +208,19 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         ]);
       }
 
-      // Rapor sorgularını throttle ile yenile — her WS mesajında değil, en fazla 30sn'de bir
       const now = Date.now();
+
+      // Dashboard + NOC: maks. 30sn'de bir (hafif sorgular)
       if (now - lastInvalidateRef.current > 30_000) {
         lastInvalidateRef.current = now;
         qc.invalidateQueries({ queryKey: ['dashboardData'] });
         qc.invalidateQueries({ queryKey: ['nocSummary'] });
+      }
+
+      // Raporlar: maks. 60sn'de bir (ağır agregasyon sorguları)
+      if (now - lastReportInvalidateRef.current > 60_000) {
+        lastReportInvalidateRef.current = now;
+        qc.invalidateQueries({ queryKey: ['reportsData'] });
         qc.invalidateQueries({ queryKey: ['sparklines'] });
       }
     };
@@ -446,6 +462,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             showFlags={appSettings.showFlags}
             showHeatmap={appSettings.showHeatmap}
             showArcs={appSettings.showArcs ?? true}
+            showTags={appSettings.showTags ?? true}
             theme={appSettings.theme || 'dark'}
             merkezFW={
               merkezFWMission
@@ -453,6 +470,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
                 : (appSettings.merkezFW ?? { lat: 39.93, lon: 32.86, name: 'Merkez FW' })
             }
             sdwanData={sdwanData}
+            flashCities={flashCities}
             onMarkerClick={onMarkerClick}
             onClearSelection={onClearSelection}
             onSetPopup={setPopupInfo}

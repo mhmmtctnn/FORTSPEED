@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 60" width="160" height="60">
+  <!-- Diamond/rhombus icon -->
+  <g transform="translate(8,6)">
+    <!-- Outer blue diamond -->
+    <rect x="0" y="0" width="44" height="44" rx="4" fill="#1a73c8" transform="rotate(0)"/>
+    <!-- Inner white diamond -->
+    <polygon points="22,6 38,22 22,38 6,22" fill="white"/>
+    <!-- Center blue diamond -->
+    <polygon points="22,12 32,22 22,32 12,22" fill="#1a73c8"/>
+    <!-- Small white center -->
+    <polygon points="22,17 27,22 22,27 17,22" fill="white"/>
+  </g>
+  <!-- ESER text -->
+  <text x="62" y="30" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#1a73c8" letter-spacing="1">ESER</text>
+  <!-- TELEKOM text -->
+  <text x="62" y="48" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="400" fill="#1a73c8" letter-spacing="2">TELEKOM</text>
+</svg>

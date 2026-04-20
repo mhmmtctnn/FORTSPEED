@@ -5,7 +5,7 @@ import Map, { Marker, NavigationControl, Popup, MapRef, Source, Layer } from 're
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck, GitBranch, Zap } from 'lucide-react';
-import { Mission, StatPoint, FilterOptions, VpnTab, SdwanRow, MissionTag, getMarkerColor, getQualityClass, getQualityLabel } from '../types';
+import { Mission, StatPoint, FilterOptions, VpnTab, SdwanRow, MissionTag, getMarkerColor, getQualityClass, getQualityLabel, hasAnyData, getBestDownload } from '../types';
 import { useTags } from '../hooks/useQueries';
 import { renderTagIcon } from './TagsManager';
 
@@ -23,9 +23,11 @@ interface Props {
   showFlags: boolean;
   showHeatmap: boolean;
   showArcs: boolean;
+  showTags?: boolean;
   theme?: 'dark' | 'light';
   merkezFW: { lat: number; lon: number; name: string };
   sdwanData?: SdwanRow[];
+  flashCities?: Map<number, { color: string; download: number }>;
   onMarkerClick: (m: Mission) => void;
   onClearSelection: () => void;
   onSetPopup: (m: Mission | null) => void;
@@ -89,8 +91,9 @@ function greatCircleArc(
 
 export default function MapView({
   missions, selectedMission, statsGsm, statsMetro, statsHub, selectedVpnTab, popupInfo,
-  filterOptions, mapFilter, filteredMissions, showFlags, showHeatmap, showArcs, theme, merkezFW,
+  filterOptions, mapFilter, filteredMissions, showFlags, showHeatmap, showArcs, showTags = true, theme, merkezFW,
   sdwanData,
+  flashCities,
   onMarkerClick, onClearSelection, onSetPopup, onSetVpnTab, onMapFilterChange,
 }: Props) {
   const t = useT();
@@ -196,25 +199,34 @@ export default function MapView({
     };
   }, [mapFilteredMissions]);
 
-  // Marker renk sistemiyle tam eşleşen 3 tier
-  // getMarkerColor: <30=red, 30-60=amber, ≥60=green  (types.ts ile aynı eşikler)
+  // 4 tier: nodata (gri) + poor/good/excellent — getMarkerColor ile birebir eşleşir
   const SPEED_TIERS = [
-    { id: 'poor',      min: 0,  max: 30,       color: '#ef4444' }, // kırmızı — zayıf
-    { id: 'good',      min: 30, max: 60,       color: '#f97316' }, // turuncu — iyi
-    { id: 'excellent', min: 60, max: Infinity, color: '#38bdf8' }, // açık mavi — mükemmel
+    { id: 'nodata',    color: '#6b7280' }, // gri   — hiç veri yok
+    { id: 'poor',      color: '#ef4444' }, // kırmızı — zayıf (<30 Mbps, veri VAR)
+    { id: 'good',      color: '#f97316' }, // turuncu — iyi (30-60 Mbps)
+    { id: 'excellent', color: '#38bdf8' }, // açık mavi — mükemmel (≥60 Mbps)
   ] as const;
+
+  type TierId = typeof SPEED_TIERS[number]['id'];
+
+  const getTierId = (m: Mission): TierId => {
+    if (!hasAnyData(m)) return 'nodata';
+    const best = getBestDownload(m);
+    return best >= 60 ? 'excellent' : best >= 30 ? 'good' : 'poor';
+  };
 
   const arcByTier = useMemo(() => {
     const base = mapFilteredMissions
       .filter(m => Number.isFinite(Number(m.lat)) && Number.isFinite(Number(m.lon)))
       .map(m => {
-        // hub_download da dahil — marker'daki getBestDownload ile aynı mantık
-        const speed = Math.max(Number(m.gsm_download) || 0, Number(m.metro_download) || 0, Number(m.hub_download) || 0);
+        const tierId = getTierId(m);
+        const tierColor = SPEED_TIERS.find(t => t.id === tierId)!.color;
+        const speed = hasAnyData(m) ? getBestDownload(m) : -1;
         const coords = greatCircleArc(
           [Number(m.lon), Number(m.lat)],
           [merkezFW.lon, merkezFW.lat]
         );
-        return { speed, coords, id: m.id, name: m.name };
+        return { tierId, tierColor, speed, coords, id: m.id, name: m.name };
       });
 
     return SPEED_TIERS.map(tier => ({
@@ -222,7 +234,7 @@ export default function MapView({
       geojson: {
         type: 'FeatureCollection',
         features: base
-          .filter(f => f.speed >= tier.min && f.speed < tier.max)
+          .filter(f => f.tierId === tier.id)
           .map(f => ({
             type: 'Feature',
             properties: { color: tier.color, speed: f.speed, name: f.name, id: f.id },
@@ -230,6 +242,7 @@ export default function MapView({
           })),
       },
     }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapFilteredMissions, merkezFW]);
 
   // arc-dot kaynakları için stabil boş GeoJSON referansı
@@ -309,7 +322,7 @@ export default function MapView({
       // Arc kapalıysa dot kaynaklarını temizle
       const map = mapRef.current?.getMap();
       if (map) {
-        ['poor', 'good', 'excellent'].forEach(id => {
+        ['nodata', 'poor', 'good', 'excellent'].forEach(id => {
           try {
             const src = map.getSource(`arc-dot-src-${id}`) as any;
             if (src?.setData) src.setData({ type: 'FeatureCollection', features: [] });
@@ -1019,59 +1032,106 @@ export default function MapView({
 
             const anyFilter = !!(vpnMapFilter || tagFilter !== null);
             const size = selected ? 22 : anyFilter ? 16 : 12;
+            const flashData  = flashCities?.get(m.id);
+            const isFlashing = !!flashData;
+            const flashColor = flashData?.color;
+            const flashDl    = flashData?.download;
 
             return (
               <Marker key={m.id} longitude={Number(m.lon)} latitude={Number(m.lat)}
                 anchor="center"
                 onClick={e => { e.originalEvent.stopPropagation(); onMarkerClick(m); }}
-                style={{ zIndex: selected ? 10 : 1 }}
+                style={{ zIndex: selected ? 10 : isFlashing ? 8 : 1 }}
               >
+                {/* ── Speedtest animasyon katmanları ── */}
+                {isFlashing && <>
+                  {/* 5 genişleyen halka — farklı gecikme ve kalınlıkta */}
+                  {([
+                    { delay: 0,   thick: 3, dur: 1.2 },
+                    { delay: 220, thick: 2, dur: 1.3 },
+                    { delay: 440, thick: 2, dur: 1.4 },
+                    { delay: 660, thick: 1.5, dur: 1.5 },
+                    { delay: 880, thick: 1, dur: 1.6 },
+                  ]).map(({ delay, thick, dur }) => (
+                    <div key={delay} style={{
+                      position: 'absolute', borderRadius: '50%',
+                      width: `${size}px`, height: `${size}px`,
+                      border: `${thick}px solid ${flashColor}`,
+                      top: '50%', left: '50%',
+                      animation: `speedtest-ripple ${dur}s cubic-bezier(0.2,0.6,0.4,1) ${delay}ms forwards`,
+                      pointerEvents: 'none',
+                    }} />
+                  ))}
+                  {/* Flash overlay — parlak iç daire */}
+                  <div style={{
+                    position: 'absolute', borderRadius: '50%',
+                    width: `${size}px`, height: `${size}px`,
+                    background: `radial-gradient(circle, ${flashColor}cc 0%, ${flashColor}00 70%)`,
+                    top: '50%', left: '50%',
+                    animation: 'speedtest-flash 0.5s ease-out forwards',
+                    pointerEvents: 'none',
+                  }} />
+                  {/* Floating hız etiketi */}
+                  <div style={{
+                    position: 'absolute', bottom: '100%', left: '50%', marginBottom: 6,
+                    background: `${flashColor}ee`,
+                    color: '#fff', fontSize: 10, fontWeight: 800,
+                    padding: '2px 7px', borderRadius: 10,
+                    whiteSpace: 'nowrap', pointerEvents: 'none',
+                    boxShadow: `0 2px 8px ${flashColor}88`,
+                    animation: 'speedtest-label 2.8s ease-out forwards',
+                  }}>
+                    ↓ {flashDl} Mbps
+                  </div>
+                </>}
+
                 {/* Tag badge marker when mission has tags */}
-                {firstTag ? (
+                {firstTag && showTags ? (
                   <div style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center',
                     gap: 3, cursor: 'pointer',
                     transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
                     opacity: selected ? 1 : (selectedMission && !anyFilter ? 0.3 : 1),
                   }}>
-                    {/* Tag ikonları — her biri kendi renginde, yan yana */}
                     <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
                       {mTags.map(tag => (
                         <div key={tag.id} style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          width: 20, height: 20,
-                          background: tag.color,
-                          border: '2px solid #fff',
-                          borderRadius: 8,
-                          boxShadow: `0 2px 6px ${tag.color}aa`,
-                          fontSize: '0.72rem',
+                          width: 20, height: 20, background: tag.color,
+                          border: '2px solid #fff', borderRadius: 8,
+                          boxShadow: `0 2px 6px ${tag.color}aa`, fontSize: '0.72rem',
                         }}>
                           {renderTagIcon(tag.icon, 14)}
                         </div>
                       ))}
                     </div>
-                    {/* Hız noktası */}
                     <div style={{
                       width: `${size}px`, height: `${size}px`,
                       background: speedColor, borderRadius: '50%',
                       border: selected ? '3px solid white' : '2px solid rgba(255,255,255,0.8)',
-                      boxShadow: selected ? `0 0 16px ${speedColor}, 0 0 32px ${speedColor}` : `0 0 6px ${speedColor}66`,
+                      boxShadow: isFlashing
+                        ? `0 0 20px ${flashColor}, 0 0 40px ${flashColor}66`
+                        : selected ? `0 0 16px ${speedColor}, 0 0 32px ${speedColor}` : `0 0 6px ${speedColor}66`,
+                      animation: isFlashing ? 'speedtest-marker-pop 0.6s cubic-bezier(0.4,0,0.2,1) forwards' : undefined,
                     }} />
                   </div>
                 ) : (
                   <div style={{
                     width: `${size}px`, height: `${size}px`,
                     background: speedColor, borderRadius: '50%',
-                    border: selected ? '3px solid white' : anyFilter ? '2px solid white' : '2px solid rgba(255,255,255,0.8)',
+                    border: isFlashing ? `2px solid ${flashColor}` : selected ? '3px solid white' : anyFilter ? '2px solid white' : '2px solid rgba(255,255,255,0.8)',
                     cursor: 'pointer',
-                    boxShadow: selected
-                      ? `0 0 16px ${speedColor}, 0 0 32px ${speedColor}`
-                      : anyFilter
-                        ? `0 0 10px ${speedColor}aa, 0 0 20px ${speedColor}55`
-                        : `0 0 6px ${speedColor}66`,
-                    transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+                    boxShadow: isFlashing
+                      ? `0 0 20px ${flashColor}, 0 0 40px ${flashColor}66`
+                      : selected
+                        ? `0 0 16px ${speedColor}, 0 0 32px ${speedColor}`
+                        : anyFilter
+                          ? `0 0 10px ${speedColor}aa, 0 0 20px ${speedColor}55`
+                          : `0 0 6px ${speedColor}66`,
+                    transition: isFlashing ? 'none' : 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
                     opacity: selected ? 1 : (selectedMission && !anyFilter ? 0.3 : 1),
-                  }} className={!selected && !anyFilter && (speedColor === '#ef4444' || speedColor === '#f97316') && !selectedMission ? 'marker-pulse' : ''} />
+                    animation: isFlashing ? 'speedtest-marker-pop 0.6s cubic-bezier(0.4,0,0.2,1) forwards' : undefined,
+                  }} className={!isFlashing && !selected && !anyFilter && !selectedMission && hasAnyData(m) && (speedColor === '#ef4444' || speedColor === '#f97316') ? 'marker-pulse' : ''} />
                 )}
               </Marker>
             );

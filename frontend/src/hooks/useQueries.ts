@@ -85,8 +85,9 @@ export const useSparklines = (filters: Filters) => {
       const res = await axios.get(`${API_BASE}/reports/sparklines`);
       return res.data;
     },
-    staleTime: 5 * 60 * 1000, // 5 dk cache
-    refetchOnWindowFocus: false
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -97,7 +98,8 @@ export const useNocSummary = (period: 'daily' | 'weekly' | 'monthly') => {
       const res = await axios.get(`${API_BASE}/reports/noc-summary?period=${period}`);
       return res.data;
     },
-    staleTime: 60000,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 };
 

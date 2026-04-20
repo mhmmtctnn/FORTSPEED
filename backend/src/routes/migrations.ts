@@ -39,14 +39,26 @@ export function registerMigrations(fastify: FastifyInstance, testing: boolean): 
           ID        SERIAL PRIMARY KEY,
           Name      VARCHAR(100) NOT NULL,
           Color     VARCHAR(20)  NOT NULL DEFAULT '#38bdf8',
-          Icon      VARCHAR(20)  NOT NULL DEFAULT '🏷️',
+          Icon      VARCHAR(200) NOT NULL DEFAULT '🏷️',
           SortOrder INT          NOT NULL DEFAULT 0
         );
       `);
       await fastify.pg.query(`
+        ALTER TABLE Tags ALTER COLUMN Icon TYPE VARCHAR(200);
+      `);
+      await fastify.pg.query(`
         ALTER TABLE Cities ADD COLUMN IF NOT EXISTS MissionTags TEXT DEFAULT NULL;
       `);
-      fastify.log.info('Migration OK: Cities.DeviceName + SatelliteType + Tags kolonları hazır.');
+      await fastify.pg.query(`
+        CREATE TABLE IF NOT EXISTS AuthConfig (
+          ID      INTEGER PRIMARY KEY DEFAULT 1,
+          Provider VARCHAR(20) NOT NULL DEFAULT 'local',
+          Config  JSONB        NOT NULL DEFAULT '{}',
+          UpdatedAt TIMESTAMPTZ DEFAULT NOW(),
+          CONSTRAINT authconfig_single_row CHECK (ID = 1)
+        );
+      `);
+      fastify.log.info('Migration OK: Cities.DeviceName + SatelliteType + Tags + AuthConfig kolonları hazır.');
     } catch (err) {
       fastify.log.error(err, 'Migration failed: Cities.DeviceName');
     }

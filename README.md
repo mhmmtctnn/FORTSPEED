@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.10.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.10.0)
+[![Version](https://img.shields.io/badge/version-1.11.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.11.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -36,6 +36,8 @@
 - 🎨 **Glassmorphism Login Screen** — Animated world map canvas with 62 global nodes, 115 connection links, 120 multi-color data packets and golden-ratio phase system (no looping artifact)
 - 📊 **Smart N/A Classification** — Configuration-announcement webhooks correctly labeled (not counted as failures)
 - 🌐 **Full i18n / Multi-language** — All UI strings externalised; dynamic locale propagation to date/time formatters across all components
+- 🔐 **Auth Manager** — Admin settings panel for switching between Local, LDAP and Keycloak authentication with live connection test
+- 📍 **4-Tier Map Arc Colours** — No-data missions now rendered in grey; arcs accurately reflect data availability alongside speed quality
 
 ---
 
@@ -412,6 +414,35 @@ services:
 
 #### 🧪 Tests
 - `types.test.ts` updated to cover new `satellite_type`, `hub_*` fields and SDWAN interface type guards
+
+---
+
+### v1.11.0 — 2026-04-20
+
+**Auth Manager, Map Arc Improvements & UX Polish**
+
+#### 🔐 Auth Manager — Multi-Provider Authentication
+- New **Auth** tab in Admin Settings panel (🔑 shield icon)
+- Support for **3 authentication providers**: Local, LDAP, Keycloak
+- **Local**: username + password hash management; inline password-change form with current/new fields
+- **LDAP**: host, port, bindDN template, TLS toggle and `tlsRejectUnauthorized` settings
+- **Keycloak**: serverUrl, realm, clientId, clientSecret, flow selection (password / code)
+- **Live connection test** button (`POST /auth/config/test`) validates the active provider before saving
+- Settings persisted via `GET/PUT /auth/config`; `backend/src/routes/auth.ts` new route module
+- `AuthConfig` TypeScript interface with `AuthProvider` union type in `AdminSettings.tsx`
+
+#### 📍 Map Arc — 4-Tier Colour System
+- Added **`nodata` tier** (grey `#6b7280`) for missions that have no speed test records at all
+- Previous 3 tiers now use `hasAnyData()` / `getBestDownload()` helpers from `types.ts` for consistency with marker colours
+- Arc layer IDs updated: `['nodata', 'poor', 'good', 'excellent']` replaces old min/max range filter
+- `flashCities` prop added to `MapView` for real-time WebSocket-triggered marker flash animations
+
+#### 🗺️ types.ts — New Helper Exports
+- `hasAnyData(m: Mission): boolean` — returns `true` if at least one of GSM/Metro/Hub has a speed value
+- `getBestDownload(m: Mission): number` — returns the maximum available download speed across all VPN types
+
+#### 🖼️ Assets
+- Added `frontend/public/icons/esertelekom.svg` — operator branding icon
 
 ---
 
