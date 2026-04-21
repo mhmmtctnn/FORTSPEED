@@ -4,7 +4,7 @@ import { DbLogFn } from '../helpers/db-log';
 import { FindCityIdFn } from '../helpers/find-city-id';
 import {
   convertToMbps, resolveVpnType, parseSpeedTestBody, detectPayloadType,
-  parseSdwanMembers, parseSdwanStatus, parseSdwanJson,
+  parseSdwanMembers, parseSdwanStatus, parseSdwanJson, parsePayloadTimestamp,
 } from '../helpers/webhook-parser';
 
 interface WebhookRingEntry {
@@ -302,6 +302,7 @@ export async function registerWebhookRoutes(
     // ── SPEED TEST ────────────────────────────────────────────────────────────
     try {
       const parsed = parseSpeedTestBody(rawBody);
+      const payloadTimestamp = parsePayloadTimestamp(rawBody);
       const deviceName = (parsed.deviceName || queryDevice || '').trim();
       if (!deviceName) {
         const msg = 'SpeedTest payload alındı ancak cihaz adı çıkarılamadı. URL\'ye ?device=CIHAZ_ADI ekleyin.';
@@ -325,7 +326,7 @@ export async function registerWebhookRoutes(
         try {
           await fastify.pg.query(
             `UPDATE WebhookLogs SET ParsedContext = $1 WHERE WebhookLogID = $2`,
-            [JSON.stringify({ ...parsed, payloadType: 'speedtest' }), webhookLogId]
+            [JSON.stringify({ ...parsed, payloadType: 'speedtest', payloadTimestamp: payloadTimestamp?.toISOString() ?? null }), webhookLogId]
           );
         } catch (_) { /* sessizce geç */ }
       }
@@ -368,8 +369,8 @@ export async function registerWebhookRoutes(
 
       await fastify.pg.query(
         `INSERT INTO SpeedStats (CityID, VpnTypeID, DeviceName, DownloadSpeed, UploadSpeed, Latency, UploadStatus, DownloadStatus, MeasuredAt)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-        [cityId, vpnTypeId, deviceName, downloadMbps, uploadMbps, latencyMs, uploadStatus, downloadStatus]
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [cityId, vpnTypeId, deviceName, downloadMbps, uploadMbps, latencyMs, uploadStatus, downloadStatus, payloadTimestamp ?? new Date()]
       );
 
       if (downloadMbps !== null || uploadMbps !== null) {
@@ -378,7 +379,7 @@ export async function registerWebhookRoutes(
           cityId, vpnTypeId, vpnTypeName,
           download: downloadMbps, upload: uploadMbps,
           latency: latencyMs, deviceName,
-          time: new Date().toISOString(),
+          time: (payloadTimestamp ?? new Date()).toISOString(),
         }));
       }
 

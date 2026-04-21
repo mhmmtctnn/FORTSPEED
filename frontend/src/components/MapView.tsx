@@ -228,7 +228,7 @@ export default function MapView({
 
     const animate = () => {
       const map = mapRef.current?.getMap();
-      if (!map) { rafRef.current = requestAnimationFrame(animate); return; }
+      if (!map || !mapReadyRef.current) { rafRef.current = requestAnimationFrame(animate); return; }
 
       const now = Date.now();
       tiers.forEach(({ id, cyclePeriod }) => {
@@ -849,14 +849,14 @@ export default function MapView({
                   </div>
                 </div>
                 {activeStats.length === 0 ? (
-                  <div style={{ height: '160px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', border: '1px solid var(--border)' }}>{t('no_stats_7d')}</div>
+                  <div style={{ height: '170px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', border: '1px solid var(--border)' }}>{t('no_stats_7d')}</div>
                 ) : (
-                  <div style={{ height: '180px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '10px', border: '1px solid var(--border)' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={activeStats}>
+                  <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', paddingTop: '8px', paddingBottom: '4px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                    <ResponsiveContainer width="100%" height={150}>
+                      <LineChart data={activeStats} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
                         <XAxis dataKey="time" hide fontSize={9}/>
-                        <YAxis stroke="var(--text-muted)" fontSize={9}/>
+                        <YAxis stroke="var(--text-muted)" fontSize={9} width={32}/>
                         <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 10 }}/>
                         <Legend wrapperStyle={{ fontSize: 10 }}/>
                         <Line type="monotone" dataKey="download" stroke="var(--green)" strokeWidth={2} dot={false} name={`↓ ${t('download')} (Mbps)`}/>

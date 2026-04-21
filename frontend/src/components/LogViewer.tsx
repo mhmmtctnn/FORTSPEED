@@ -670,7 +670,11 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                       )}
                     </div>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.sourceip}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{timeAgo(log.createdat, bcp47, minUnit, hourUnit)}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {p.payloadTimestamp
+                        ? new Date(p.payloadTimestamp).toLocaleString(bcp47, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                        : timeAgo(log.createdat, bcp47, minUnit, hourUnit)}
+                    </span>
                     {open ? <ChevronUp size={12} color="var(--text-muted)" /> : <ChevronDown size={12} color="var(--text-muted)" />}
                   </div>
 

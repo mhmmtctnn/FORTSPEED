@@ -176,6 +176,19 @@ export function resolveVpnType(vpnName: string | null): 'GSM' | 'METRO' | 'HUB' 
   return 'METRO'; // default
 }
 
+/**
+ * Ham payload başlık satırından zaman damgasını çıkar.
+ * Eşleşen format: "========= #N, YYYY-MM-DD HH:MM:SS ========="
+ * Dönüş: geçerli bir Date nesnesi veya null.
+ */
+export function parsePayloadTimestamp(body: string): Date | null {
+  const firstLines = body.slice(0, 300); // ilk 300 karakter yeterli
+  const m = firstLines.match(/={3,}[^,\n]*,\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})/);
+  if (!m) return null;
+  const d = new Date(m[1].replace(' ', 'T'));
+  return isNaN(d.getTime()) ? null : d;
+}
+
 /** Parse raw FortiGate / BW speed-test body text — mirrors Parse-SpeedTestBody in server.ps1 */
 export function parseSpeedTestBody(body: string) {
   const lines = body.split(/\r?\n/);

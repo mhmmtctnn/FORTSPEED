@@ -64,6 +64,13 @@ function parseSdwanRaw(raw: string): ParsedSdwan {
   return { deviceName, members, activeMember, activeMemberSeq };
 }
 
+function parsePayloadTimestamp(raw: string): Date | null {
+  const m = (raw || '').slice(0, 300).match(/={3,}[^,\n]*,\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})/);
+  if (!m) return null;
+  const d = new Date(m[1].replace(' ', 'T'));
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function timeAgo(iso: string, bcp47: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return new Intl.RelativeTimeFormat(bcp47, { numeric: 'auto', style: 'short' }).format(-s, 'second');
@@ -723,7 +730,9 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                         </span>
                         <div style={{ overflow: 'hidden', minWidth: 0 }}><SummaryCell /></div>
                         <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.sourceip}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{timeAgo(log.createdat, bcp47)}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {(() => { const ts = parsePayloadTimestamp(log.rawpayload); return ts ? ts.toLocaleString(bcp47, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : timeAgo(log.createdat, bcp47); })()}
+                        </span>
                         {open ? <ChevronUp size={12} color="var(--text-muted)" /> : <ChevronDown size={12} color="var(--text-muted)" />}
                       </div>
                       {open && (
