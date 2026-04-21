@@ -4,6 +4,30 @@ All notable changes to FORTSPEED are documented here.
 
 ---
 
+## [v1.14.0] — 2026-04-21
+
+### Payload Zaman Damgası, SDWAN & LogViewer Doğru Zaman, MapView Grafik Düzeltmesi
+
+#### Backend — Payload Zaman Damgası
+- **`parsePayloadTimestamp()`** yeni helper fonksiyonu eklendi (`webhook-parser.ts`). FortiGate payload başlık satırındaki `========= #N, YYYY-MM-DD HH:MM:SS =========` formatından zaman damgasını çıkarır.
+- **`SpeedStats.MeasuredAt`** — `NOW()` yerine payload'daki gerçek zaman damgası kullanılıyor. Payload'da zaman yoksa `NOW()` fallback olarak devreye giriyor.
+- **`WebhookLogs.ParsedContext`** — `payloadTimestamp` alanı eklendi; log kaydında cihazın ölçüm anı saklanıyor.
+- **WebSocket push** — `time` alanı artık `new Date()` değil, payload zaman damgasını yansıtıyor.
+
+#### Frontend — LogViewer
+- Webhook log listesinde zaman sütunu: `payloadTimestamp` mevcutsa **cihazın gerçek ölçüm zamanı** gösteriliyor (GG.AA.YYYY SS:DD:SS formatı), yoksa önceki `timeAgo` davranışı korunuyor.
+
+#### Frontend — SdwanMonitor
+- `parsePayloadTimestamp()` helper SdwanMonitor bileşenine eklendi (frontend tarafında ayrıca parse).
+- SDWAN log satırı zaman göstergesi: raw payload'dan zaman damgası çıkarılabiliyorsa **gerçek ölçüm zamanı**, yoksa `timeAgo` gösteriliyor.
+
+#### Frontend — MapView Grafik
+- Popup içi hız grafiğindeki taşma sorunu giderildi: `height` fixed → `ResponsiveContainer height={150}` + `margin` sıfırlandı.
+- `YAxis width={32}` ile etiket kırpılması düzeltildi.
+- Map hazır olmadan arc animasyonu başlamıyor (`mapReadyRef` kontrolü eklendi).
+
+---
+
 ## [v1.13.0] — 2026-04-21
 
 ### Güvenlik Sertleştirme, bcrypt Auth, CORS Kısıtlama, mapUtils Modül Ayrımı, Girdi Doğrulama
