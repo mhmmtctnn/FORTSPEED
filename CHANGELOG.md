@@ -4,6 +4,44 @@ All notable changes to FORTSPEED are documented here.
 
 ---
 
+## [v1.13.0] — 2026-04-21
+
+### Güvenlik Sertleştirme, bcrypt Auth, CORS Kısıtlama, mapUtils Modül Ayrımı, Girdi Doğrulama
+
+#### Güvenlik
+- **bcrypt şifre hashleme** — SHA-256'dan bcrypt'e geçiş (`cost=10`). Eski SHA-256 hash'leri sonraki girişte otomatik migrate ediliyor.
+- **CORS kısıtlama** — `origin: true` kaldırıldı. `CORS_ORIGIN` env değişkeni set edilmediğinde same-origin (false) uygulanır. Çoklu origin desteği için virgülle ayrılan liste kabul ediliyor.
+- **API key koruması** — `PUT /api/auth/config` endpointi `FORTSPEED_API_KEY` env değişkeni set edildiğinde bu key olmadan erişimi reddediyor.
+- **LDAP TLS** — `tlsRejectUnauthorized` varsayılanı `false`→`true` olarak güvenli hale getirildi.
+- **AuthConfig cache invalidation** — `invalidateAuthConfigCache()` dışa aktarıldı; config değişikliklerinde 5 dakikalık in-memory cache temizleniyor.
+
+#### Auth Cache
+- `getAuthConfig()` 5 dakika TTL ile in-memory önbelleğe alınıyor; DB yükü azaltıldı.
+
+#### Backend Girdi Doğrulama
+- `POST /api/cities` Fastify JSON Schema ile doğrulandı: `name` zorunlu, `additionalProperties: false`, tüm alanlar maxLength sınırlı.
+- `GET /api/cities` — 42703 (undefined_column) DB hata kodu ayrıştırıldı; eski şemalarda graceful fallback, diğer hatalar 500 döndürür.
+
+#### Redis Güvenilirliği
+- `subRedis.subscribe()` hata callback'i eklendi.
+- `subRedis.on('error')` dinleyicisi eklendi — bağlantı hataları artık loglanıyor.
+
+#### Harita Refactor
+- `CONTINENT_BBOX`, `getBbox()`, `greatCircleArc()` fonksiyonları `MapView.tsx`'ten `mapUtils.ts` ayrı modülüne çıkarıldı. MapView bundle boyutu küçüldü.
+
+#### Test Kapsamı
+- `backend/src/__tests__/auth.test.ts` — bcrypt login, cache invalidation, config endpoint güvenlik testleri (yeni).
+- `backend/src/__tests__/webhook-sdwan.test.ts` — SDWAN webhook parse testleri (yeni).
+- `backend/src/__tests__/webhook-device-validation.test.ts` — Cihaz adı doğrulama edge-case testleri genişletildi.
+- `frontend/src/__tests__/types.test.ts` — `hasAnyData`, `getBestDownload`, `getMarkerColor` helper testleri genişletildi.
+
+#### Diğer
+- `.env.example` dosyası eklendi — tüm desteklenen env değişkenleri belgelenmiş.
+- `frontend/src/vite-env.d.ts` — Vite ortam tipi tanımı eklendi.
+- `docker-compose.yml` — Servis yapılandırmaları güncellendi.
+
+---
+
 ## [v1.12.0] — 2026-04-20
 
 ### Arc Anti-Meridian Fix, Tag UX, Mission Data Filter, Unknown Device Fix
