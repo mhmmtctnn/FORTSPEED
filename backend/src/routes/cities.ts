@@ -9,7 +9,12 @@ export async function registerCityRoutes(fastify: FastifyInstance, redis: Redis)
     try {
       const { rows } = await fastify.pg.query(withDeviceName);
       return rows.map(parseTags);
-    } catch {
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code !== '42703') {
+        fastify.log.error(err);
+        return reply.status(500).send({ error: 'DB Error' });
+      }
+      // Fallback: schema lacks extended columns (old deployment) — 42703 undefined_column
       try {
         const { rows } = await fastify.pg.query(withoutDeviceName);
         return rows.map(parseTags);
@@ -20,9 +25,30 @@ export async function registerCityRoutes(fastify: FastifyInstance, redis: Redis)
     }
   });
 
-  fastify.post('/api/cities', async (request, reply) => {
+  fastify.post('/api/cities', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name:             { type: 'string', minLength: 1, maxLength: 128 },
+          continent:        { type: 'string', maxLength: 64 },
+          country:          { type: 'string', maxLength: 64 },
+          city:             { type: 'string', maxLength: 128 },
+          type:             { type: 'string', maxLength: 64 },
+          lat:              { type: ['number', 'null'] },
+          lon:              { type: ['number', 'null'] },
+          device_name:      { type: 'string', maxLength: 128 },
+          is_starlink:      { type: 'boolean' },
+          satellite_type:   { type: 'string', maxLength: 64 },
+          terrestrial_type: { type: 'string', maxLength: 64 },
+          tags:             { type: 'array', items: { type: 'object' } },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (request, reply) => {
     const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type, terrestrial_type, tags } = request.body as any;
-    if (!name) return reply.status(400).send({ error: 'name is required' });
     const satType = satellite_type || null;
     const terrType = terrestrial_type || null;
     const isStarlinkVal = satType === 'starlink' ? true : (is_starlink ?? false);
@@ -36,7 +62,12 @@ export async function registerCityRoutes(fastify: FastifyInstance, redis: Redis)
       if (device_name) cacheKeys.push(`cityid:${device_name.toUpperCase()}`);
       await Promise.all(cacheKeys.map(k => redis.del(k)));
       return reply.status(201).send({ ...rows[0], tags: rows[0].mission_tags ? JSON.parse(rows[0].mission_tags) : [], mission_tags: undefined });
-    } catch {
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code !== '42703') {
+        fastify.log.error(err);
+        return reply.status(500).send({ error: 'DB Error' });
+      }
+      // Fallback: schema lacks extended columns (old deployment) — 42703 undefined_column
       try {
         const { rows } = await fastify.pg.query(
           'INSERT INTO Cities (CityName, KITA, ULKE, IL, TURU, ENLEM, BOYLAM) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink',
@@ -91,7 +122,28 @@ export async function registerCityRoutes(fastify: FastifyInstance, redis: Redis)
     return reply.status(200).send(results);
   });
 
-  fastify.put('/api/cities/:id', async (request, reply) => {
+  fastify.put('/api/cities/:id', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          name:             { type: 'string', minLength: 1, maxLength: 128 },
+          continent:        { type: 'string', maxLength: 64 },
+          country:          { type: 'string', maxLength: 64 },
+          city:             { type: 'string', maxLength: 128 },
+          type:             { type: 'string', maxLength: 64 },
+          lat:              { type: ['number', 'null'] },
+          lon:              { type: ['number', 'null'] },
+          device_name:      { type: 'string', maxLength: 128 },
+          is_starlink:      { type: 'boolean' },
+          satellite_type:   { type: 'string', maxLength: 64 },
+          terrestrial_type: { type: 'string', maxLength: 64 },
+          tags:             { type: 'array', items: { type: 'object' } },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (request, reply) => {
     const { id } = request.params as any;
     const { name, continent, country, city, type, lat, lon, device_name, is_starlink, satellite_type, terrestrial_type, tags } = request.body as any;
     const satType = satellite_type || null;
@@ -108,7 +160,12 @@ export async function registerCityRoutes(fastify: FastifyInstance, redis: Redis)
       if (device_name) cacheKeys.push(`cityid:${device_name.toUpperCase()}`);
       await Promise.all(cacheKeys.map(k => redis.del(k)));
       return { ...rows[0], tags: rows[0].mission_tags ? JSON.parse(rows[0].mission_tags) : [], mission_tags: undefined };
-    } catch {
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code !== '42703') {
+        fastify.log.error(err);
+        return reply.status(500).send({ error: 'DB Error' });
+      }
+      // Fallback: schema lacks extended columns (old deployment) — 42703 undefined_column
       try {
         const { rows } = await fastify.pg.query(
           'UPDATE Cities SET CityName=$1, KITA=$2, ULKE=$3, IL=$4, TURU=$5, ENLEM=$6, BOYLAM=$7 WHERE CityID=$8 RETURNING CityID as id, CityName as name, KITA as continent, ULKE as country, IL as city, TURU as type, ENLEM as lat, BOYLAM as lon, NULL as device_name, FALSE as is_starlink, NULL as satellite_type, NULL as terrestrial_type',

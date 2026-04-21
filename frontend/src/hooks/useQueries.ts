@@ -13,6 +13,7 @@ export const useMissions = () =>
   useQuery<Mission[]>({
     queryKey: ['missions'],
     queryFn: async () => (await axios.get(`${API_BASE}/missions`)).data,
+    staleTime: 60_000,
   });
 
 export const useCities = () =>

@@ -5,7 +5,7 @@ services:
     container_name: speedtest_db
     restart: always
     environment:
-      - POSTGRES_PASSWORD=SecurePassword123
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env}
       - POSTGRES_DB=speedtest_db
     volumes:
       - ./database/init:/docker-entrypoint-initdb.d
@@ -27,6 +27,11 @@ services:
     restart: always
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - speedtest_network
 
@@ -39,9 +44,9 @@ services:
     container_name: speedtest_backend
     restart: always
     environment:
-      - DATABASE_URL=postgres://postgres:SecurePassword123@db:5432/speedtest_db
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/speedtest_db
       - REDIS_URL=redis://redis:6379
-      - NODE_ENV=development
+      - NODE_ENV=${NODE_ENV:-production}
       - PORT=3000
       - ITAI_MODE=${ITAI_MODE:-false}
       - ITAI_JWT_SECRET=${ITAI_JWT_SECRET:-}
@@ -50,12 +55,10 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "3000:3000"
       - "8080:3000"
-    volumes:
-      - ./backend/src:/app/src
     networks:
       - speedtest_network
 

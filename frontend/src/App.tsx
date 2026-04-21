@@ -135,6 +135,10 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   const lastReportInvalidateRef = useRef<number>(0);
 
   const connectWS = useCallback(() => {
+    if (ws.current && ws.current.readyState !== WebSocket.CLOSED) {
+      ws.current.onclose = null; // prevent auto-reconnect from old connection
+      ws.current.close();
+    }
     ws.current = new WebSocket(WS_URL);
     ws.current.onmessage = (event) => {
       const msg = JSON.parse(event.data) as any;

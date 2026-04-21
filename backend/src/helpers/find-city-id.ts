@@ -7,6 +7,7 @@ export function createFindCityId(fastify: FastifyInstance, redis: Redis): FindCi
   return async (deviceName: string): Promise<number | null> => {
     const cacheKey = `cityid:${deviceName.toUpperCase()}`;
     const cached = await redis.get(cacheKey);
+    if (cached === 'null') return null;
     if (cached !== null) return Number(cached);
 
     const res = await fastify.pg.query<{ cityid: number }>(
@@ -19,6 +20,9 @@ export function createFindCityId(fastify: FastifyInstance, redis: Redis): FindCi
     const cityId = res.rows.length > 0 ? res.rows[0].cityid : null;
     if (cityId !== null) {
       await redis.setex(cacheKey, 3600, String(cityId));
+    } else {
+      // Cache negative result with short TTL to prevent repeated DB hits for unknown devices
+      await redis.setex(cacheKey, 300, 'null');
     }
     return cityId;
   };

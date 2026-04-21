@@ -29,7 +29,12 @@ export interface AppOptions {
 export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: opts.testing ? false : true, trustProxy: true });
 
-  fastify.register(cors, { origin: true });
+  // CORS — restrict to explicit origin whitelist when CORS_ORIGIN is set;
+  // defaults to false (same-origin) which is safe for the Nginx-proxied SPA deployment
+  const allowedOrigins = process.env.CORS_ORIGIN;
+  fastify.register(cors, {
+    origin: allowedOrigins ? allowedOrigins.split(',').map(o => o.trim()) : false,
+  });
 
   // Rate limiting — DoS/brute-force koruması
   // Test modunda plugin yine kaydedilir (CodeQL için), ama limit çok yüksektir
@@ -68,7 +73,12 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   if (!opts.testing) {
-    subRedis.subscribe('speedtest_updates');
+    subRedis.subscribe('speedtest_updates', (err) => {
+      if (err) fastify.log.error(err, 'Redis subscribe failed');
+    });
+    subRedis.on('error', (err) => {
+      fastify.log.error(err, 'Redis subscription connection error');
+    });
     subRedis.on('message', (_channel: string, message: string) => {
       fastify.websocketServer.clients.forEach((client: any) => {
         if (client.readyState === 1) client.send(message);

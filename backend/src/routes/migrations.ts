@@ -103,7 +103,7 @@ export function registerMigrations(fastify: FastifyInstance, testing: boolean): 
     // ── Log temizleme ──
     if (!testing) {
       purgeOldLogs(fastify);
-      setInterval(() => purgeOldLogs(fastify), 24 * 60 * 60 * 1000);
+      setInterval(() => { purgeOldLogs(fastify).catch((err) => fastify.log.error(err, 'purgeOldLogs failed')); }, 24 * 60 * 60 * 1000);
     }
     // ── Index doğrulama ──
     try {

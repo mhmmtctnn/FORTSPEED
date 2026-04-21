@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fmt, getBestDownload, getBestUpload, getMarkerColor, getQualityClass, getQualityLabel } from '../types';
+import { fmt, getBestDownload, getBestUpload, getMarkerColor, getQualityClass, getQualityLabel, hasAnyData } from '../types';
 import type { Mission } from '../types';
 
 // ─── Mock Mission Factory ───────────────────────────────────────────────────
@@ -96,8 +96,8 @@ describe('getMarkerColor', () => {
     expect(getMarkerColor(makeMission({ gsm_download: 10 }))).toBe('#ef4444');
   });
 
-  it('returns red when no data (0)', () => {
-    expect(getMarkerColor(makeMission({}))).toBe('#ef4444');
+  it('returns gray when mission has no data at all', () => {
+    expect(getMarkerColor(makeMission({}))).toBe('#6b7280');
   });
 });
 
@@ -119,6 +119,30 @@ describe('getQualityClass', () => {
   it('returns quality-none for null/undefined', () => {
     expect(getQualityClass(null)).toBe('quality-none');
     expect(getQualityClass(undefined)).toBe('quality-none');
+  });
+});
+
+// ─── hasAnyData ─────────────────────────────────────────────────────────────
+
+describe('hasAnyData', () => {
+  it('returns true when gsm_download is set', () => {
+    expect(hasAnyData(makeMission({ gsm_download: 50 }))).toBe(true);
+  });
+
+  it('returns true when metro_download is set', () => {
+    expect(hasAnyData(makeMission({ metro_download: 100 }))).toBe(true);
+  });
+
+  it('returns true when hub_download is set', () => {
+    expect(hasAnyData(makeMission({ hub_download: 0 }))).toBe(true);
+  });
+
+  it('returns false when all download fields are null', () => {
+    expect(hasAnyData(makeMission({ gsm_download: null, metro_download: null, hub_download: null }))).toBe(false);
+  });
+
+  it('returns false when no download fields are present', () => {
+    expect(hasAnyData(makeMission({}))).toBe(false);
   });
 });
 

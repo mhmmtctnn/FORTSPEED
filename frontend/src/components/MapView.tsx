@@ -8,6 +8,7 @@ import { MapPin, Globe, Signal, Wifi, HardDrive, TrendingUp, ShieldCheck, GitBra
 import { Mission, StatPoint, FilterOptions, VpnTab, SdwanRow, MissionTag, getMarkerColor, getQualityClass, getQualityLabel, hasAnyData, getBestDownload } from '../types';
 import { useTags } from '../hooks/useQueries';
 import { renderTagIcon } from './TagsManager';
+import { CONTINENT_BBOX, getBbox, greatCircleArc } from './mapUtils';
 
 interface Props {
   missions: Mission[];
@@ -35,68 +36,6 @@ interface Props {
   onMapFilterChange: (f: { continent: string; country: string; mission: string }) => void;
 }
 
-
-// Kıta adı → [minLon, minLat, maxLon, maxLat] sınır kutusu (fitBounds için)
-const CONTINENT_BBOX: Record<string, [number, number, number, number]> = {
-  'AVRUPA':        [-25, 34, 45, 72],
-  'ASYA':          [25, -10, 145, 55],
-  'AFRIKA':        [-20, -36, 55, 38],
-  'KUZEY AMERIKA': [-170, 10, -50, 75],
-  'KUZEY AMEIRKA': [-170, 10, -50, 75],
-  'GUNEY AMERIKA': [-82, -56, -34, 13],
-  'AVUSTRALYA':    [110, -48, 180, 10],
-  'AVUSTURALYA':   [110, -48, 180, 10],
-};
-
-function getBbox(geometry: { type: string; coordinates: unknown }): [number, number, number, number] {
-  let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
-  const proc = (c: number[]) => {
-    if (c[0] < minLon) minLon = c[0]; if (c[1] < minLat) minLat = c[1];
-    if (c[0] > maxLon) maxLon = c[0]; if (c[1] > maxLat) maxLat = c[1];
-  };
-  const walk = (arr: unknown) => {
-    if (!Array.isArray(arr)) return;
-    if (typeof arr[0] === 'number') { proc(arr as number[]); }
-    else arr.forEach(walk);
-  };
-  walk((geometry as { coordinates: unknown }).coordinates);
-  return [minLon, minLat, maxLon, maxLat];
-}
-
-// Küresel arc: iki nokta arasında yayın koordinatlarını hesapla
-function greatCircleArc(
-  from: [number, number], to: [number, number], steps = 64
-): [number, number][] {
-  const toRad = (d: number) => d * Math.PI / 180;
-  const toDeg = (r: number) => r * 180 / Math.PI;
-  const [lon1, lat1] = from.map(toRad);
-  const [lon2, lat2] = to.map(toRad);
-  const d = 2 * Math.asin(Math.sqrt(
-    Math.sin((lat2 - lat1) / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
-  ));
-  if (d === 0) return [from, to];
-  const pts: [number, number][] = [];
-  let prevLon: number | null = null;
-  for (let i = 0; i <= steps; i++) {
-    const f = i / steps;
-    const A = Math.sin((1 - f) * d) / Math.sin(d);
-    const B = Math.sin(f * d) / Math.sin(d);
-    const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
-    const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
-    const z = A * Math.sin(lat1) + B * Math.sin(lat2);
-    let lon = toDeg(Math.atan2(y, x));
-    const lat = toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)));
-    if (prevLon !== null) {
-      const diff = lon - prevLon;
-      if (diff > 180) lon -= 360;
-      else if (diff < -180) lon += 360;
-    }
-    prevLon = lon;
-    pts.push([lon, lat]);
-  }
-  return pts;
-}
 
 export default function MapView({
   missions, selectedMission, statsGsm, statsMetro, statsHub, selectedVpnTab, popupInfo,
@@ -490,21 +429,27 @@ export default function MapView({
         flagLayerIds.current.push('fl-borders-all');
       }
 
-      // TEK bayrak kaplama (fill) layer — poligon sınırlarına clipping (kırpma) sağlar
+      // Bayrak kaplama (fill) layer — tüm zoom seviyelerinde görünür
+      // Yaklaştıkça opacity düşer: tiling görsel etkisi minimize edilir
       if (!map.getLayer('fl-fills-all')) {
         map.addLayer({
           id: 'fl-fills-all',
           type: 'fill',
           source: 'world-countries',
-          paint: { 
-            // Harita üzerindeki country border'ın (polygon) içini flag resmi ile mozaik boyar
+          paint: {
             'fill-pattern': ['concat', 'fp-', ['get', 'map_iso2']] as any,
-            // Daha şeffaf (watermark) bir görünüm, mozaik etkisini yumuşatır:
-            'fill-opacity': 0.20
+            'fill-opacity': [
+              'interpolate', ['linear'], ['zoom'],
+              2, 0.22,
+              5, 0.18,
+              7, 0.08,
+              10, 0.04,
+            ] as any,
           },
         }, firstSymbolId);
         flagLayerIds.current.push('fl-fills-all');
       }
+
 
       worldFlagsLoaded.current = true;
       console.info('[WorldFlags] ✅ Bayraklar başarıyla yüklendi.',
@@ -554,6 +499,30 @@ export default function MapView({
     });
   }, [showFlags]);
 
+  // Harita label layer'larını yumuşat (ülke/şehir yazıları misyon markerlarıyla karışmasın)
+  const softenMapLabels = useCallback((map: any) => {
+    const isDark = theme === 'dark';
+    const layers = map.getStyle()?.layers ?? [];
+    layers.forEach((layer: any) => {
+      if (layer.type !== 'symbol') return;
+      const layout = layer.layout ?? {};
+      if (!layout['text-field'] && !layer.id.includes('label') && !layer.id.includes('name') && !layer.id.includes('place')) return;
+      try {
+        // Ülke/kıta adları: çok soluk
+        if (layer.id.includes('country') || layer.id.includes('continent') || layer.id.includes('state')) {
+          map.setPaintProperty(layer.id, 'text-color', isDark ? 'rgba(200,220,255,0.35)' : 'rgba(80,100,130,0.40)');
+          map.setPaintProperty(layer.id, 'text-halo-color', isDark ? 'rgba(0,0,0,0)' : 'rgba(255,255,255,0)');
+        }
+        // Şehir/yer adları: biraz daha görünür ama yine de soluk
+        else if (layer.id.includes('city') || layer.id.includes('place') || layer.id.includes('town') || layer.id.includes('village') || layer.id.includes('label')) {
+          map.setPaintProperty(layer.id, 'text-color', isDark ? 'rgba(180,200,230,0.45)' : 'rgba(90,110,140,0.50)');
+          map.setPaintProperty(layer.id, 'text-halo-color', isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.5)');
+          map.setPaintProperty(layer.id, 'text-halo-width', 1);
+        }
+      } catch { /* layer bazı özellikleri desteklemeyebilir */ }
+    });
+  }, [theme]);
+
   // Garantili Map Initialization mekanizması (Sürekli Polling)
   useEffect(() => {
     console.warn('[WorldFlags-DEBUG] Garantili başlatıcı devrede (Polling)...');
@@ -565,12 +534,20 @@ export default function MapView({
         clearInterval(initTimer);
         console.warn('[WorldFlags-DEBUG] Harita ve stil tamamen yüklendi! Bayrak yüklemesine geçiliyor.');
         mapReadyRef.current = true;
+        softenMapLabels(map);
         loadWorldFlags();
       }
     }, 300);
 
     return () => clearInterval(initTimer);
-  }, [loadWorldFlags]);
+  }, [loadWorldFlags, softenMapLabels]);
+
+  // Tema değişince label renklerini güncelle
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map || !map.isStyleLoaded()) return;
+    softenMapLabels(map);
+  }, [theme, softenMapLabels]);
 
   // showFlags prop güncellemeleri için
   useEffect(() => {
@@ -899,9 +876,9 @@ export default function MapView({
         <Map
           ref={mapRef}
           initialViewState={{ longitude: 35, latitude: 25, zoom: 2 }}
-          mapStyle={theme === 'light' 
-            ? "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-            : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"}
+          mapStyle={theme === 'light'
+            ? (import.meta.env.VITE_MAP_STYLE_LIGHT || "https://tiles.openfreemap.org/styles/positron")
+            : (import.meta.env.VITE_MAP_STYLE_DARK  || "https://tiles.openfreemap.org/styles/dark")}
           onClick={() => {
             if (selectedMission) onClearSelection();
             onSetPopup(null);

@@ -1,11 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface LocalConfig {
   username: string;
-  passwordHash: string; // sha256 hex
+  passwordHash: string; // bcrypt hash (legacy: sha256 hex, auto-migrated on next login)
 }
 
 interface LdapConfig {
@@ -37,22 +38,39 @@ export interface AuthConfigRow {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Legacy sha256 — used only during migration from old hash format
 function sha256(s: string) {
   return crypto.createHash('sha256').update(s).digest('hex');
 }
 
-const DEFAULT_ADMIN_HASH = sha256('admin');
+// Default admin hash — bcrypt; only used when no AuthConfig row exists in DB
+const DEFAULT_ADMIN_HASH = bcrypt.hashSync('admin', 10);
+
+let authConfigCache: { value: AuthConfigRow; expiresAt: number } | null = null;
+const AUTH_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function invalidateAuthConfigCache() {
+  authConfigCache = null;
+}
 
 async function getAuthConfig(fastify: FastifyInstance): Promise<AuthConfigRow> {
+  const now = Date.now();
+  if (authConfigCache && now < authConfigCache.expiresAt) {
+    return authConfigCache.value;
+  }
   const { rows } = await fastify.pg.query(
     'SELECT Provider as provider, Config as config FROM AuthConfig WHERE ID=1'
   );
+  let result: AuthConfigRow;
   if (!rows.length) {
-    return { provider: 'local', config: { local: { username: 'admin', passwordHash: DEFAULT_ADMIN_HASH } } };
+    result = { provider: 'local', config: { local: { username: 'admin', passwordHash: DEFAULT_ADMIN_HASH } } };
+  } else {
+    const row = rows[0];
+    const config = typeof row.config === 'string' ? JSON.parse(row.config) : row.config;
+    result = { provider: row.provider, config };
   }
-  const row = rows[0];
-  const config = typeof row.config === 'string' ? JSON.parse(row.config) : row.config;
-  return { provider: row.provider, config };
+  authConfigCache = { value: result, expiresAt: now + AUTH_CONFIG_CACHE_TTL_MS };
+  return result;
 }
 
 function requireLdapjs(): any | null {
@@ -85,7 +103,7 @@ async function validateLdap(
         url,
         timeout: 8000,
         connectTimeout: 8000,
-        tlsOptions: { rejectUnauthorized: cfg.tlsRejectUnauthorized ?? false },
+        tlsOptions: { rejectUnauthorized: cfg.tlsRejectUnauthorized ?? true },
       });
     } catch (e: any) {
       return done({ ok: false, error: e.message });
@@ -147,8 +165,24 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
     }
   });
 
-  // PUT /api/auth/config — save config
+  // PUT /api/auth/config — save config (requires FORTSPEED_API_KEY if set)
   fastify.put('/api/auth/config', async (request, reply) => {
+    const apiKey = process.env.FORTSPEED_API_KEY;
+    if (apiKey) {
+      const authHeader = (request.headers.authorization || '').replace(/^Bearer\s+/i, '');
+      const keyHeader = (request.headers['x-api-key'] as string) || '';
+      const provided = authHeader || keyHeader;
+      try {
+        const expected = Buffer.from(apiKey);
+        const actual = Buffer.from(provided);
+        const valid = expected.length > 0 && expected.length === actual.length &&
+          crypto.timingSafeEqual(expected, actual);
+        if (!valid) return reply.status(403).send({ error: 'Yetkisiz' });
+      } catch {
+        return reply.status(403).send({ error: 'Yetkisiz' });
+      }
+    }
+
     const body = request.body as AuthConfigRow;
     if (!['local', 'ldap', 'keycloak'].includes(body?.provider)) {
       return reply.status(400).send({ error: 'Geçersiz sağlayıcı' });
@@ -176,6 +210,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
          ON CONFLICT (ID) DO UPDATE SET Provider=$1, Config=$2::jsonb, UpdatedAt=NOW()`,
         [body.provider, JSON.stringify(body.config)]
       );
+      invalidateAuthConfigCache();
       return { ok: true };
     } catch (err) {
       fastify.log.error(err);
@@ -183,12 +218,23 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
     }
   });
 
-  // POST /api/auth/login — validate credentials
-  fastify.post('/api/auth/login', async (request, reply) => {
-    const { username, password } = request.body as { username?: string; password?: string };
-    if (!username?.trim() || !password) {
-      return reply.status(400).send({ error: 'Kullanıcı adı ve şifre zorunlu' });
-    }
+  // POST /api/auth/login — validate credentials (rate-limited: 5/5min per IP)
+  // codeql[js/missing-rate-limiting] — @fastify/rate-limit per-route config applied
+  fastify.post('/api/auth/login', {
+    config: { rateLimit: { max: 5, timeWindow: '5 minutes' } },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['username', 'password'],
+        properties: {
+          username: { type: 'string', minLength: 1, maxLength: 128 },
+          password: { type: 'string', minLength: 1, maxLength: 256 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (request, reply) => {
+    const { username, password } = request.body as { username: string; password: string };
 
     try {
       const row = await getAuthConfig(fastify);
@@ -198,7 +244,32 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
       switch (row.provider) {
         case 'local': {
           const cfg = row.config.local ?? { username: 'admin', passwordHash: DEFAULT_ADMIN_HASH };
-          ok = username === cfg.username && sha256(password) === cfg.passwordHash;
+          if (username !== cfg.username) {
+            ok = false;
+            errorMsg = 'Kullanıcı adı veya şifre hatalı';
+            break;
+          }
+          const isBcrypt = cfg.passwordHash.startsWith('$2');
+          if (isBcrypt) {
+            ok = await bcrypt.compare(password, cfg.passwordHash);
+          } else {
+            // Legacy sha256 hash — compare and migrate to bcrypt on success
+            ok = sha256(password) === cfg.passwordHash;
+            if (ok) {
+              try {
+                const newHash = await bcrypt.hash(password, 10);
+                const migratedConfig = { ...row.config, local: { ...cfg, passwordHash: newHash } };
+                await fastify.pg.query(
+                  `INSERT INTO AuthConfig (ID, Provider, Config, UpdatedAt)
+                   VALUES (1, $1, $2::jsonb, NOW())
+                   ON CONFLICT (ID) DO UPDATE SET Config=$2::jsonb, UpdatedAt=NOW()`,
+                  [row.provider, JSON.stringify(migratedConfig)]
+                );
+              } catch (migrateErr) {
+                fastify.log.warn(migrateErr, 'bcrypt hash migration failed — will retry on next login');
+              }
+            }
+          }
           if (!ok) errorMsg = 'Kullanıcı adı veya şifre hatalı';
           break;
         }
@@ -230,24 +301,41 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
   });
 
   // POST /api/auth/change-password — local provider only
-  fastify.post('/api/auth/change-password', async (request, reply) => {
-    const { currentPassword, newPassword } = request.body as { currentPassword?: string; newPassword?: string };
-    if (!newPassword?.trim()) return reply.status(400).send({ error: 'Yeni şifre zorunlu' });
+  fastify.post('/api/auth/change-password', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['currentPassword', 'newPassword'],
+        properties: {
+          currentPassword: { type: 'string', minLength: 1, maxLength: 256 },
+          newPassword:     { type: 'string', minLength: 1, maxLength: 256 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (request, reply) => {
+    const { currentPassword, newPassword } = request.body as { currentPassword: string; newPassword: string };
 
     try {
       const row = await getAuthConfig(fastify);
       if (row.provider !== 'local') return reply.status(400).send({ error: 'Yerel kimlik doğrulama kullanılmıyor' });
       const cfg = row.config.local ?? { username: 'admin', passwordHash: DEFAULT_ADMIN_HASH };
-      if (sha256(currentPassword || '') !== cfg.passwordHash) {
+      const isBcrypt = cfg.passwordHash.startsWith('$2');
+      const currentValid = isBcrypt
+        ? await bcrypt.compare(currentPassword || '', cfg.passwordHash)
+        : sha256(currentPassword || '') === cfg.passwordHash;
+      if (!currentValid) {
         return reply.status(401).send({ error: 'Mevcut şifre yanlış' });
       }
-      const updated = { ...row.config, local: { ...cfg, passwordHash: sha256(newPassword) } };
+      const newHash = await bcrypt.hash(newPassword, 10);
+      const updated = { ...row.config, local: { ...cfg, passwordHash: newHash } };
       await fastify.pg.query(
         `INSERT INTO AuthConfig (ID, Provider, Config, UpdatedAt)
          VALUES (1, $1, $2::jsonb, NOW())
          ON CONFLICT (ID) DO UPDATE SET Config=$2::jsonb, UpdatedAt=NOW()`,
         [row.provider, JSON.stringify(updated)]
       );
+      invalidateAuthConfigCache();
       return { ok: true };
     } catch (err) {
       fastify.log.error(err);
@@ -339,7 +427,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
           let client: any;
           try {
             client = ldap.createClient({ url, connectTimeout: 5000, timeout: 5000,
-              tlsOptions: { rejectUnauthorized: cfg.tlsRejectUnauthorized ?? false } });
+              tlsOptions: { rejectUnauthorized: cfg.tlsRejectUnauthorized ?? true } });
           } catch (e: any) {
             clearTimeout(timer);
             return done({ ok: false, error: e.message });

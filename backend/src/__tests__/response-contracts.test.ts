@@ -57,11 +57,9 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
       const res = await app.inject({ method: 'GET', url: '/api/cities' });
       const body = JSON.parse(res.body);
       expect(Array.isArray(body)).toBe(true);
-      
-      if (body.length > 0) {
-        for (const field of REQUIRED_FIELDS) {
-          expect(body[0]).toHaveProperty(field);
-        }
+      expect(body.length).toBeGreaterThan(0);
+      for (const field of REQUIRED_FIELDS) {
+        expect(body[0]).toHaveProperty(field);
       }
     });
 
@@ -101,10 +99,10 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
       const res = await app.inject({ method: 'GET', url: '/api/missions' });
       const body = JSON.parse(res.body);
 
-      if (body.length > 0) {
-        for (const field of REQUIRED_FIELDS) {
-          expect(body[0]).toHaveProperty(field);
-        }
+      expect(Array.isArray(body)).toBe(true);
+      expect(body.length).toBeGreaterThan(0);
+      for (const field of REQUIRED_FIELDS) {
+        expect(body[0]).toHaveProperty(field);
       }
     });
 

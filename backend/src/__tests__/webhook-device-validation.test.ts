@@ -197,6 +197,43 @@ describe('POST /api/webhook — Cihaz Doğrulama', () => {
 
     expect(res.statusCode).toBe(400);
   });
+
+  // ─── PARSE_ERROR Path (v1.12.0) ───────────────────────────────────────────
+
+  it('hız verisi var ama cihaz adı yok ve ?device= parametresi de yoksa PARSE_ERROR 400 döndürmeli', async () => {
+    // Body speedtest formatında ama device prefix yok → parsed.deviceName null
+    // queryDevice da yok → PARSE_ERROR
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] }) // INSERT WebhookLogs
+      .mockResolvedValueOnce({ rows: [] });                    // dbLog WARN
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/webhook',
+      headers: { 'content-type': 'text/plain' },
+      body: 'client(sender): up_speed: 50 Mbps\nclient(recver): down_speed: 100 Mbps',
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('PARSE_ERROR');
+    expect(typeof body.message).toBe('string');
+  });
+
+  it('body\'de cihaz adı yokken ?device= query parametresi ile kayıt yapılabilmeli', async () => {
+    // Aynı body, bu sefer ?device=BERLIN-BK query param ile → parse edilmeli
+    knownDeviceMock(42, 1);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/webhook?device=BERLIN-BK',
+      headers: { 'content-type': 'text/plain' },
+      body: 'client(sender): up_speed: 50 Mbps\nclient(recver): down_speed: 100 Mbps',
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.device).toBe('BERLIN-BK');
+    expect(body.status).toBe('OK');
+  });
 });
 
 // ─── Webhook Stats ──────────────────────────────────────────────────────────
