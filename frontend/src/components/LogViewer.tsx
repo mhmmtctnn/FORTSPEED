@@ -584,7 +584,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
               position: 'sticky', top: 0, zIndex: 5,
               background: 'var(--bg-base)',
               display: 'grid',
-              gridTemplateColumns: '4px minmax(120px,180px) 60px minmax(160px,1fr) minmax(80px,160px) 72px 14px',
+              gridTemplateColumns: '4px minmax(120px,180px) 60px minmax(160px,1fr) minmax(80px,150px) 150px 14px',
               gap: '0 12px', padding: '12px 14px 6px',
               fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
               letterSpacing: '0.07em', color: 'var(--text-muted)',
@@ -620,7 +620,7 @@ export const LogViewer = ({ onGoToMissions }: LogViewerProps) => {
                 }}>
                   <div
                     onClick={() => setExpanded(open ? null : log.webhooklogid)}
-                    style={{ display: 'grid', gridTemplateColumns: '4px minmax(120px,180px) 60px minmax(160px,1fr) minmax(80px,160px) 72px 14px', gap: '0 12px', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: open ? 'var(--accent-dim)' : 'transparent' }}
+                    style={{ display: 'grid', gridTemplateColumns: '4px minmax(120px,180px) 60px minmax(160px,1fr) minmax(80px,150px) 150px 14px', gap: '0 12px', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: open ? 'var(--accent-dim)' : 'transparent' }}
                     onMouseEnter={e => { if (!open) (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'; }}
                     onMouseLeave={e => { if (!open) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                   >

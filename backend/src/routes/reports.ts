@@ -353,4 +353,134 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
       return reply.status(500).send({ error: 'DB Error' });
     }
   });
+
+  // ── SDWAN İstikrar Raporu — SdwanHistory tablosundan ────────────────────────
+  // Her SdwanHistory satırı = bir member geçiş olayı (FromInterface → ToInterface)
+  fastify.get('/api/reports/sdwan-stability', async (request, reply) => {
+    const { period, continent, country, cityId } = request.query as { period?: string; continent?: string; country?: string; cityId?: string };
+    const periodDays = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+
+    try {
+      // Geçiş sayısı + son geçiş + geçiş/gün
+      const { rows } = await fastify.pg.query(`
+        WITH gaps AS (
+          SELECT
+            h.CityID,
+            h.RecordedAt,
+            LAG(h.RecordedAt) OVER (PARTITION BY h.CityID ORDER BY h.RecordedAt) AS prev_at
+          FROM SdwanHistory h
+          JOIN Cities c ON c.CityID = h.CityID
+          WHERE h.RecordedAt >= NOW() - ($1 || ' days')::interval
+            AND COALESCE(h.FromInterface, '') <> h.ToInterface
+            AND ($3::text IS NULL OR c.KITA = $3)
+            AND ($4::text IS NULL OR c.ULKE = $4)
+            AND ($5::int IS NULL OR h.CityID = $5)
+        )
+        SELECT
+          c.CityID,
+          c.CityName AS city_name,
+          c.DeviceName AS device_name,
+          COUNT(*) AS switch_count,
+          MAX(h.RecordedAt) AS last_switch,
+          ROUND((COUNT(*)::numeric / GREATEST($2, 1)), 3) AS switches_per_day,
+          COALESCE(MAX(EXTRACT(EPOCH FROM (g.RecordedAt - g.prev_at)) / 3600.0) FILTER (WHERE g.prev_at IS NOT NULL), 0) AS max_stable_hours
+        FROM SdwanHistory h
+        JOIN Cities c ON c.CityID = h.CityID
+        LEFT JOIN gaps g ON g.CityID = h.CityID AND g.RecordedAt = h.RecordedAt
+        WHERE h.RecordedAt >= NOW() - ($1 || ' days')::interval
+          AND COALESCE(h.FromInterface, '') <> h.ToInterface
+          AND ($3::text IS NULL OR c.KITA = $3)
+          AND ($4::text IS NULL OR c.ULKE = $4)
+          AND ($5::int IS NULL OR h.CityID = $5)
+        GROUP BY c.CityID, c.CityName, c.DeviceName
+        ORDER BY switch_count DESC
+      `, [periodDays, periodDays, continent || null, country || null, cityId ? Number(cityId) : null]);
+
+      // Member popülerlik — ToInterface ne kadar seçildi
+      const { rows: memberRows } = await fastify.pg.query(`
+        SELECT
+          c.CityID,
+          c.CityName AS city_name,
+          h.ToInterface AS member_name,
+          COUNT(*) AS activations
+        FROM SdwanHistory h
+        JOIN Cities c ON c.CityID = h.CityID
+        WHERE h.RecordedAt >= NOW() - ($1 || ' days')::interval
+          AND h.ToInterface IS NOT NULL
+          AND COALESCE(h.FromInterface, '') <> h.ToInterface
+          AND ($2::text IS NULL OR c.KITA = $2)
+          AND ($3::text IS NULL OR c.ULKE = $3)
+          AND ($4::int IS NULL OR h.CityID = $4)
+        GROUP BY c.CityID, c.CityName, h.ToInterface
+        ORDER BY c.CityName, activations DESC
+      `, [periodDays, continent || null, country || null, cityId ? Number(cityId) : null]);
+
+      const totalSwitches = rows.reduce((s: number, r: any) => s + Number(r.switch_count), 0);
+      const avgDailySwitches = Math.round((totalSwitches / periodDays) * 10) / 10;
+      const maxStableHours = rows.length > 0
+        ? Math.max(...rows.map((r: any) => Number(r.max_stable_hours)))
+        : 0;
+
+      const toRow = (r: any) => ({
+        cityId:         Number(r.cityid),
+        deviceName:     r.device_name,
+        cityName:       r.city_name,
+        switchCount:    Number(r.switch_count),
+        switchesPerDay: Number(r.switches_per_day),
+        maxStableHours: Math.round(Number(r.max_stable_hours) * 10) / 10,
+        lastSwitch:     r.last_switch,
+      });
+
+      return reply.send({
+        summary: {
+          totalSwitches,
+          avgDailySwitches,
+          maxStableHours: Math.round(maxStableHours * 10) / 10,
+        },
+        topSwitchers:  rows.slice(0, 10).map(toRow),
+        mostStable:    [...rows].sort((a: any, b: any) => Number(b.max_stable_hours) - Number(a.max_stable_hours)).slice(0, 10).map(toRow),
+        mostUnstable:  [...rows].sort((a: any, b: any) => Number(b.switches_per_day) - Number(a.switches_per_day)).slice(0, 10).map(toRow),
+        memberPopularity: memberRows.map((r: any) => ({
+          cityId:      Number(r.cityid),
+          cityName:    r.city_name,
+          memberName:  r.member_name,
+          activations: Number(r.activations),
+        })),
+      });
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'DB Error' });
+    }
+  });
+
+  fastify.get('/api/reports/sdwan-stability/timeseries', async (request, reply) => {
+    const { period, cityId } = request.query as { period?: string; cityId?: string };
+    const periodDays = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+
+    try {
+      const { rows } = await fastify.pg.query(`
+        SELECT
+          COALESCE(h.FromInterface, 'İlk Kayıt') AS from_interface,
+          h.ToInterface                           AS to_interface,
+          COUNT(*)                                AS transition_count,
+          MAX(h.RecordedAt)                       AS last_seen
+        FROM SdwanHistory h
+        WHERE h.RecordedAt >= NOW() - ($1 || ' days')::interval
+          AND COALESCE(h.FromInterface, '') <> h.ToInterface
+          AND ($2::int IS NULL OR h.CityID = $2)
+        GROUP BY h.FromInterface, h.ToInterface
+        ORDER BY transition_count DESC
+      `, [periodDays, cityId ? Number(cityId) : null]);
+
+      return reply.send(rows.map((r: any) => ({
+        fromInterface:   r.from_interface,
+        toInterface:     r.to_interface,
+        count:           Number(r.transition_count),
+        lastSeen:        r.last_seen,
+      })));
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'DB Error' });
+    }
+  });
 }

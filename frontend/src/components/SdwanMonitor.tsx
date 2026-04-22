@@ -410,7 +410,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
         {/* Sütun başlıkları — sticky */}
         {withData.length > 0 && (
           <div style={{
-            display: 'grid', gridTemplateColumns: '200px 180px 1fr 100px',
+            display: 'grid', gridTemplateColumns: '200px 180px 1fr 160px',
             gap: '0 16px', padding: '12px 14px 6px',
             fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
             letterSpacing: '0.07em', color: 'var(--text-muted)',
@@ -440,7 +440,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                 <div
                   onClick={() => setExpanded(open ? null : row.city_id)}
                   style={{
-                    display: 'grid', gridTemplateColumns: '200px 180px 1fr 100px',
+                    display: 'grid', gridTemplateColumns: '200px 180px 1fr 160px',
                     gap: '0 16px', alignItems: 'center', padding: '10px 14px',
                     cursor: 'pointer', background: open ? 'rgba(245,158,11,0.06)' : 'transparent',
                   }}
@@ -490,7 +490,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
 
                   {/* Zaman */}
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {row.updated_at ? timeAgo(row.updated_at, bcp47) : '—'}
+                    {row.updated_at ? new Date(row.updated_at).toLocaleString(bcp47, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}
                   </span>
                 </div>
 
@@ -643,7 +643,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
               {/* Sütun başlıkları */}
               <div style={{
                 position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg-base)',
-                display: 'grid', gridTemplateColumns: '4px 180px 130px 1fr 100px 70px 14px',
+                display: 'grid', gridTemplateColumns: '4px 180px 130px 1fr 90px 150px 14px',
                 gap: '0 12px', padding: '12px 14px 6px',
                 fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
                 letterSpacing: '0.07em', color: 'var(--text-muted)',
@@ -714,7 +714,7 @@ export const SdwanMonitor = ({ initialData = [] }: Props) => {
                     <div key={log.webhooklogid} style={{ borderRadius: 'var(--radius-sm)', border: `1px solid ${open ? 'rgba(56,189,248,0.25)' : 'var(--border)'}`, background: idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)', overflow: 'hidden' }}>
                       <div
                         onClick={() => setWhkExpanded(open ? null : log.webhooklogid)}
-                        style={{ display: 'grid', gridTemplateColumns: '4px 180px 130px 1fr 100px 70px 14px', gap: '0 12px', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: open ? 'var(--accent-dim)' : 'transparent' }}
+                        style={{ display: 'grid', gridTemplateColumns: '4px 180px 130px 1fr 90px 150px 14px', gap: '0 12px', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', background: open ? 'var(--accent-dim)' : 'transparent' }}
                         onMouseEnter={e => { if (!open) (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'; }}
                         onMouseLeave={e => { if (!open) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                       >

@@ -1,5 +1,5 @@
 export type View = 'map' | 'dashboard' | 'reports' | 'missions' | 'settings' | 'logs' | 'sdwan';
-export type ReportType = 'summary' | 'missions' | 'countries' | 'continents' | 'vpntypes' | 'all';
+export type ReportType = 'summary' | 'missions' | 'countries' | 'continents' | 'vpntypes' | 'all' | 'sdwan-stability';
 export type VpnTab = 'GSM' | 'METRO' | 'HUB';
 export type SatelliteType = 'starlink' | 'turksat';
 export type TerrestrialType = 'tti';
@@ -116,6 +116,16 @@ export interface ActivityEntry {
   download: number;
   upload: number;
   latency: number;
+  time: string;
+}
+
+export interface SdwanActivityEntry {
+  id: string;
+  cityId: number;
+  missionName: string;
+  deviceName: string;
+  activeMemberSeq: number | null;
+  activeInterface: string | null;
   time: string;
 }
 

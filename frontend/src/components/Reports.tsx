@@ -4,7 +4,7 @@ import { FilterCombobox } from './FilterCombobox';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
 import { BarChart3, Filter, Download, Trophy, Globe, Activity, ListFilter, Calendar, X } from 'lucide-react';
 import { Mission, CityRow, Filters, FilterOptions, ReportType, fmt, getBestDownload } from '../types';
-import { useNocSummary } from '../hooks/useQueries';
+import { useNocSummary, useSdwanStability, useSdwanTimeseries } from '../hooks/useQueries';
 
 const COLORS = ['#38bdf8', '#a855f7', '#f97316', '#f59e0b', '#ef4444', '#06b6d4', '#e879f9', '#84cc16'];
 
@@ -213,7 +213,7 @@ const StatCard = ({ title, value }: { title: string; value: string | number }) =
   </div>
 );
 
-export default function Reports({ missions, filters, filterOptions, summary, missionReports, countryReports, continentReports, vpntypeReports, reports, sparklines, loading, onFiltersChange, onApply }: Props) {
+export default function Reports({ missions, cityList, filters, filterOptions, summary, missionReports, countryReports, continentReports, vpntypeReports, reports, sparklines, loading, onFiltersChange, onApply }: Props) {
   const t = useT();
   const { locale } = useLanguage();
   const bcp47 = LOCALE_BCP47[locale];
@@ -233,14 +233,19 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
     { value: 'continents' as ReportType, label: t('report_continents') },
     { value: 'vpntypes' as ReportType, label: t('report_vpntypes') },
     { value: 'all' as ReportType, label: t('report_all') },
+    { value: 'sdwan-stability' as ReportType, label: t('report_sdwan_stability') },
   ];
   const [sortCol, setSortCol] = useState('');
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc');
   const [showAllVpnMissions, setShowAllVpnMissions] = useState(false);
   const [nocPeriod, setNocPeriod] = useState<'daily'|'weekly'|'monthly'>('monthly');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [sdwanPeriod, setSdwanPeriod] = useState<'7d'|'30d'|'90d'>('30d');
+  const [sdwanTimeseriesCityId, setSdwanTimeseriesCityId] = useState<number|null>(null);
 
   const { data: nocData, isFetching: nocLoading } = useNocSummary(nocPeriod);
+  const { data: sdwanStability, isFetching: sdwanLoading } = useSdwanStability(sdwanPeriod, filters.continent || undefined, filters.country || undefined, filters.missionId || undefined);
+  const { data: sdwanTimeseries, isFetching: sdwanTimeseriesLoading } = useSdwanTimeseries(sdwanPeriod, sdwanTimeseriesCityId);
 
   const toggleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -515,7 +520,7 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
                 )}
 
                 {/* Hız */}
-                {filters.reportType !== 'summary' && (
+                {filters.reportType !== 'summary' && filters.reportType !== 'sdwan-stability' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                     <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Activity size={10} /> Hız (Mbps)
@@ -1144,8 +1149,224 @@ export default function Reports({ missions, filters, filterOptions, summary, mis
           </div>
         )}
 
+        {/* SDWAN İstikrar Raporu */}
+        {filters.reportType === 'sdwan-stability' && (
+          <div className="fade-in">
+            {/* Period seçici */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+              {(['7d','30d','90d'] as const).map(p => (
+                <button key={p} className={`tab-btn ${sdwanPeriod === p ? 'active' : ''}`}
+                  style={{ padding: '5px 14px', fontSize: '0.78rem' }}
+                  onClick={() => { setSdwanPeriod(p); setSdwanTimeseriesCityId(null); }}>
+                  {p === '7d' ? t('quick_7d') : p === '30d' ? t('quick_30d') : t('quick_3m')}
+                </button>
+              ))}
+            </div>
+
+            {sdwanLoading && <div style={{ color: 'var(--text-muted)', padding: '40px 0', textAlign: 'center' }}>{t('loading')}</div>}
+
+            {!sdwanLoading && sdwanStability && (() => {
+              // ── helpers ──────────────────────────────────────────────
+              const guessIfaceType = (iface: string) => {
+                const u = (iface ?? '').toUpperCase();
+                if (/GSM|LTE|4G|5G|CELL|MOBILE/.test(u)) return { color: '#a855f7', bg: 'rgba(168,85,247,0.15)', border: 'rgba(168,85,247,0.3)' };
+                if (/\bHUB\b|_HUB|HUB_/.test(u))         return { color: '#06b6d4', bg: 'rgba(6,182,212,0.15)',  border: 'rgba(6,182,212,0.3)' };
+                if (/METRO|MPLS|FIBER|LEASED|KARASAL/.test(u)) return { color: '#38bdf8', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.25)' };
+                return { color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.05)', border: 'var(--border)' };
+              };
+
+              const healthColor = (spd: number) =>
+                spd >= 2   ? '#ef4444' :
+                spd >= 0.3 ? '#f59e0b' :
+                             '#22c55e';
+
+              // ── merged mission rows ───────────────────────────────────
+              const allMap = new Map<number, any>();
+              for (const r of sdwanStability.topSwitchers ?? [])
+                allMap.set(r.cityId, { ...r, maxStableHours: null });
+              for (const r of sdwanStability.mostStable ?? []) {
+                if (allMap.has(r.cityId)) allMap.get(r.cityId).maxStableHours = r.maxStableHours;
+                else allMap.set(r.cityId, { ...r, switchesPerDay: 0 });
+              }
+              const missionRows = [...allMap.values()].sort((a, b) => b.switchesPerDay - a.switchesPerDay);
+              const maxSpd = missionRows[0]?.switchesPerDay ?? 1;
+
+              // ── timeseries for expanded row ───────────────────────────
+              const transitions: any[] = sdwanTimeseries ?? [];
+              const maxCount = transitions.length > 0 ? Math.max(...transitions.map((r: any) => r.count)) : 1;
+
+              // ── unique mission count ──────────────────────────────────
+              const missionCount = allMap.size;
+              const periodLabel = sdwanPeriod === '7d' ? '7 gün' : sdwanPeriod === '30d' ? '30 gün' : '90 gün';
+
+              return (
+                <>
+                  {/* ── Özet cümlesi ── */}
+                  <div className="glass-card" style={{ padding: '14px 20px', marginBottom: 16, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+                    Son <strong style={{ color: 'var(--text-primary)' }}>{periodLabel}</strong> içinde{' '}
+                    <strong style={{ color: '#ef4444', fontSize: '1rem' }}>{sdwanStability.summary.totalSwitches}</strong> geçiş tespit edildi —{' '}
+                    <strong style={{ color: 'var(--accent)' }}>{missionCount} misyon</strong>da,
+                    günlük ortalama <strong style={{ color: 'var(--amber)' }}>{Number(sdwanStability.summary.avgDailySwitches).toFixed(1)}</strong> geçiş.
+                    {sdwanStability.summary.maxStableHours > 0 && (
+                      <> En uzun kesintisiz stabil süre: <strong style={{ color: '#22c55e' }}>{sdwanStability.summary.maxStableHours} saat</strong>.</>
+                    )}
+                  </div>
+
+                  {/* ── Mission Health Table ── */}
+                  {missionRows.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
+                      <Activity size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.3 }}/>
+                      <p>{t('no_data')}</p>
+                    </div>
+                  ) : (
+                    <div className="glass-card" style={{ overflow: 'hidden' }}>
+                      <table className="data-table" style={{ fontSize: '0.78rem' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ width: 32 }}>#</th>
+                            <th style={{ width: 40 }}>Durum</th>
+                            <th>Misyon</th>
+                            <th style={{ minWidth: 140 }}>{t('sdwan_switches_per_day')}</th>
+                            <th className="right" style={{ width: 70 }}>{t('sdwan_switch_count')}</th>
+                            <th className="right" style={{ width: 110 }}>{t('sdwan_stable_hours')}</th>
+                            <th style={{ width: 100 }}>{t('sdwan_last_switch')}</th>
+                            <th style={{ width: 32 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {missionRows.map((r: any, i: number) => {
+                            const hc = healthColor(r.switchesPerDay);
+                            const isExpanded = sdwanTimeseriesCityId === r.cityId;
+                            const missionMembers = (sdwanStability.memberPopularity ?? [])
+                              .filter((m: any) => m.cityId === r.cityId)
+                              .sort((a: any, b: any) => b.activations - a.activations);
+                            const maxAct = missionMembers[0]?.activations ?? 1;
+
+                            return (
+                              <React.Fragment key={r.cityId}>
+                                <tr
+                                  style={{ cursor: 'pointer', background: isExpanded ? 'rgba(56,189,248,0.04)' : undefined }}
+                                  onClick={() => setSdwanTimeseriesCityId(isExpanded ? null : r.cityId)}>
+                                  <td style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{i + 1}</td>
+                                  <td>
+                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: hc, boxShadow: `0 0 6px ${hc}88`, margin: '0 auto' }}/>
+                                  </td>
+                                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.cityName}</td>
+                                  <td>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <div style={{ flex: 1, background: 'var(--bg-base)', borderRadius: 99, height: 6, overflow: 'hidden', minWidth: 60 }}>
+                                        <div style={{ width: `${Math.round((r.switchesPerDay / maxSpd) * 100)}%`, height: '100%', borderRadius: 99, background: hc, transition: 'width 0.5s ease' }}/>
+                                      </div>
+                                      <span style={{ fontWeight: 700, color: hc, minWidth: 28, textAlign: 'right' }}>{Number(r.switchesPerDay).toFixed(1)}</span>
+                                    </div>
+                                  </td>
+                                  <td className="right" style={{ fontWeight: 700 }}>{r.switchCount ?? 0}</td>
+                                  <td className="right" style={{ color: r.maxStableHours ? '#22c55e' : 'var(--text-muted)', fontWeight: r.maxStableHours ? 700 : 400 }}>
+                                    {r.maxStableHours ? `${r.maxStableHours} h` : '—'}
+                                  </td>
+                                  <td style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                    {r.lastSwitch ? new Date(r.lastSwitch).toLocaleDateString(bcp47) : '—'}
+                                  </td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                    {isExpanded ? '▼' : '▶'}
+                                  </td>
+                                </tr>
+
+                                {/* ── Inline expansion ── */}
+                                {isExpanded && (
+                                  <tr>
+                                    <td colSpan={8} style={{ padding: 0, background: 'var(--bg-surface)' }}>
+                                      <div style={{ display: 'flex', gap: 24, padding: '16px 20px', borderTop: '1px solid var(--border)' }}>
+
+                                        {/* Left: Geçiş Akışı */}
+                                        <div style={{ flex: 2, minWidth: 0 }}>
+                                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                                            🔀 Geçiş Akışı
+                                          </div>
+                                          {sdwanTimeseriesLoading ? (
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>⏳</div>
+                                          ) : transitions.length === 0 ? (
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '12px 0' }}>{t('no_data')}</div>
+                                          ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                              {transitions.map((row: any, ti: number) => {
+                                                const from = guessIfaceType(row.fromInterface);
+                                                const to   = guessIfaceType(row.toInterface);
+                                                const pct  = Math.round((row.count / maxCount) * 100);
+                                                return (
+                                                  <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: from.bg, color: from.color, border: `1px solid ${from.border}`, whiteSpace: 'nowrap', minWidth: 72, textAlign: 'center' }}>
+                                                      {row.fromInterface}
+                                                    </span>
+                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', flexShrink: 0 }}>→</span>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: to.bg, color: to.color, border: `1px solid ${to.border}`, whiteSpace: 'nowrap', minWidth: 72, textAlign: 'center' }}>
+                                                      {row.toInterface}
+                                                    </span>
+                                                    <div style={{ flex: 1, background: 'var(--bg-base)', borderRadius: 99, height: 7, overflow: 'hidden' }}>
+                                                      <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: `linear-gradient(90deg,${from.color}88,${to.color})`, transition: 'width 0.5s ease' }}/>
+                                                    </div>
+                                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, flexShrink: 0, minWidth: 26, textAlign: 'right' }}>{row.count}×</span>
+                                                    <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', flexShrink: 0, minWidth: 60, textAlign: 'right' }}>
+                                                      {row.lastSeen ? new Date(row.lastSeen).toLocaleDateString(bcp47, { month: 'short', day: 'numeric' }) : ''}
+                                                    </span>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Divider */}
+                                        <div style={{ width: 1, background: 'var(--border)', flexShrink: 0 }}/>
+
+                                        {/* Right: Member Kullanımı */}
+                                        <div style={{ flex: 1, minWidth: 160 }}>
+                                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                                            📡 {t('sdwan_member_dist')}
+                                          </div>
+                                          {missionMembers.length === 0 ? (
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</div>
+                                          ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                              {missionMembers.map((m: any, mi: number) => (
+                                                <div key={mi} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                  <span style={{ fontSize: '0.68rem', color: 'var(--text-primary)', fontWeight: 600, minWidth: 80, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.memberName}</span>
+                                                  <div style={{ flex: 1, background: 'var(--bg-base)', borderRadius: 99, height: 8, overflow: 'hidden' }}>
+                                                    <div style={{ width: `${Math.round((m.activations / maxAct) * 100)}%`, height: '100%', borderRadius: 99, background: 'var(--accent)', transition: 'width 0.5s ease' }}/>
+                                                  </div>
+                                                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--accent)', minWidth: 22, textAlign: 'right' }}>{m.activations}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
+            {!sdwanLoading && !sdwanStability && (
+              <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
+                <Activity size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.3 }}/>
+                <p>{t('no_data')}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Empty state */}
-        {!loading && !summary && !missionReports.length && !countryReports.length && !continentReports.length && !vpntypeReports.length && !reports.length && (
+        {!loading && !summary && !missionReports.length && !countryReports.length && !continentReports.length && !vpntypeReports.length && !reports.length && filters.reportType !== 'sdwan-stability' && (
           <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
             <BarChart3 size={48} style={{ margin: '0 auto 16px', display: 'block', opacity: 0.3 }}/>
             <p style={{ fontSize: '0.9rem' }}>Rapor tipini seçip "Uygula" butonuna tıklayın</p>

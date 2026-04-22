@@ -14,7 +14,7 @@ import { LogViewer } from './components/LogViewer';
 import { SdwanMonitor } from './components/SdwanMonitor';
 import {
   View, VpnTab,
-  Mission, StatPoint, Filters, CityRow, ActivityEntry,
+  Mission, StatPoint, Filters, CityRow, ActivityEntry, SdwanActivityEntry,
 } from './types';
 import { LanguageProvider, useT, useLanguage, LOCALE_BCP47 } from './i18n';
 import { useMissions, useCities, useFilterOptions, useDashboardData, useReportsData, useCityMutations, useSparklines, useSdwan } from './hooks/useQueries';
@@ -93,6 +93,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   const [selectedVpnTab, setSelectedVpnTab] = useState<VpnTab>('GSM');
   const [popupInfo, setPopupInfo] = useState<Mission | null>(null);
   const [activityFeed, setActivityFeed] = useState<ActivityEntry[]>([]);
+  const [sdwanFeed, setSdwanFeed] = useState<SdwanActivityEntry[]>([]);
   const [alerts, setAlerts] = useState<UnknownDeviceAlert[]>([]);
   // cityId → {color, download}; yeni speedtest gelince 3s boyunca animasyon
   const [flashCities, setFlashCities] = useState<Map<number, { color: string; download: number }>>(new Map());
@@ -140,8 +141,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       ws.current.close();
     }
     ws.current = new WebSocket(WS_URL);
+    ws.current.onerror = () => { /* onerror always fires before onclose — reconnect handled there */ };
     ws.current.onmessage = (event) => {
-      const msg = JSON.parse(event.data) as any;
+      let msg: any;
+      try { msg = JSON.parse(event.data); }
+      catch { return; } // non-JSON frame (ping/pong/text) — ignore silently
 
       // Bilinmeyen cihaz uyarısı
       if (msg.type === 'unknown_device') {
@@ -157,6 +161,26 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         setPendingDevices(prev =>
           prev.some(d => d.deviceName === msg.deviceName) ? prev : [entry, ...prev]
         );
+        return;
+      }
+
+      // SDWAN olayları — activity feed'e değil sdwanFeed'e yönlendir
+      if (msg.type === 'sdwan_combined' || msg.type === 'sdwan_status' || msg.type === 'sdwan_members') {
+        let missionNameSdwan = '';
+        qc.setQueryData<Mission[]>(['missions'], (old) => {
+          if (!old) return [];
+          old.forEach(m => { if (m.id === msg.cityId) missionNameSdwan = m.name; });
+          return old;
+        });
+        setSdwanFeed(prev => [{
+          id: `sdwan-${msg.cityId}-${Date.now()}`,
+          cityId: msg.cityId,
+          missionName: missionNameSdwan || msg.deviceName || String(msg.cityId),
+          deviceName: msg.deviceName || '',
+          activeMemberSeq: msg.activeMemberSeq ?? null,
+          activeInterface: msg.activeInterface ?? null,
+          time: new Date(msg.time).toLocaleTimeString(bcp47),
+        }, ...prev.slice(0, 29)]);
         return;
       }
 
@@ -233,7 +257,10 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         qc.invalidateQueries({ queryKey: ['sparklines'] });
       }
     };
-    ws.current.onclose = () => { reconnectTimer.current = window.setTimeout(connectWS, 3000); };
+    ws.current.onclose = () => {
+      if (reconnectTimer.current) window.clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = window.setTimeout(connectWS, 3000);
+    };
   }, [qc]);
 
   // Sayfa açılışında son kayıtları REST'ten çek → activityFeed boş görünmez
@@ -452,6 +479,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             continentReports={continentReports}
             vpntypeReports={vpntypeReports}
             activityFeed={activityFeed}
+            sdwanFeed={sdwanFeed}
             onLoadDashboard={loadDashboard}
           />
         )}

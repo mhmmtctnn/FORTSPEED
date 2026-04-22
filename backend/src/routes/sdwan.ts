@@ -47,9 +47,18 @@ export async function registerSdwanRoutes(
           [cityId, activeMemberSeq, activeInterface]
         );
 
-        if (prevInterface !== activeInterface) {
+        if (prevInterface !== activeInterface && activeInterface !== null) {
           await fastify.pg.query(
-            `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID) VALUES ($1, $2, $3, $4)`,
+            `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID)
+             SELECT $1, $2, $3, $4
+             WHERE COALESCE($2::text, '') <> $3
+               AND NOT EXISTS (
+                 SELECT 1 FROM SdwanHistory
+                 WHERE CityID = $1
+                   AND COALESCE(FromInterface, '') = COALESCE($2::text, '')
+                   AND ToInterface = $3
+                   AND RecordedAt > NOW() - INTERVAL '2 minutes'
+               )`,
             [cityId, prevInterface, activeInterface, activeMemberSeq]
           );
         }
@@ -77,9 +86,10 @@ export async function registerSdwanRoutes(
                h.ActiveSeqID as active_seq_id, h.RecordedAt as recorded_at
         FROM SdwanHistory h
         JOIN Cities c ON c.CityID = h.CityID
+        WHERE COALESCE(h.FromInterface, '') <> h.ToInterface
       `;
       const params: any[] = [];
-      if (cityId) { query += ` WHERE h.CityID = $1`; params.push(Number(cityId)); }
+      if (cityId) { query += ` AND h.CityID = $1`; params.push(Number(cityId)); }
       query += ` ORDER BY h.RecordedAt DESC LIMIT $${params.length + 1}`;
       params.push(Number(limit));
       const { rows } = await fastify.pg.query(query, params);

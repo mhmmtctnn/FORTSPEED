@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Globe, TrendingUp, Wifi, Activity, Clock, MapPin, Zap, Calendar, X } from 'lucide-react';
+import { Globe, TrendingUp, Wifi, Activity, Clock, MapPin, Zap, Calendar, X, Trophy } from 'lucide-react';
 
 // KPI icon'ları bileşen dışında sabit — her render'da yeni JSX oluşturulmaz
 const KPI_ICONS = {
@@ -11,7 +11,7 @@ const KPI_ICONS = {
   zap:      <Zap size={20} />,
   clock:    <Clock size={20} />,
 };
-import { Mission, ActivityEntry, fmt, getBestDownload, getBestUpload } from '../types';
+import { Mission, ActivityEntry, SdwanActivityEntry, fmt, getBestDownload, getBestUpload } from '../types';
 import { useT, useLanguage, LOCALE_BCP47 } from '../i18n';
 
 export interface DateRange { startDate: string; endDate: string; }
@@ -22,6 +22,7 @@ interface Props {
   continentReports: Record<string, unknown>[];
   vpntypeReports: Record<string, unknown>[];
   activityFeed: ActivityEntry[];
+  sdwanFeed: SdwanActivityEntry[];
   onLoadDashboard: (range: DateRange) => void;
 }
 
@@ -60,12 +61,13 @@ function validateRange(r: DateRange, translate: (k: string) => string, bcp47: st
   return '';
 }
 
-export default function Dashboard({ missions, summary, continentReports, vpntypeReports, activityFeed, onLoadDashboard }: Props) {
+export default function Dashboard({ missions, summary, continentReports, vpntypeReports, activityFeed, sdwanFeed, onLoadDashboard }: Props) {
   const t = useT();
   const { locale } = useLanguage();
   const bcp47 = LOCALE_BCP47[locale];
   const [range, setRange] = useState<DateRange>({ startDate: daysAgo(30), endDate: today() });
   const [topMetric, setTopMetric] = useState<'download'|'upload'>('download');
+  const [activityTab, setActivityTab] = useState<'speedtest'|'sdwan'>('speedtest');
   const validationErr = useMemo(() => validateRange(range, t, bcp47), [range, t, bcp47]);
   const isValid = validationErr === '';
 
@@ -77,7 +79,7 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
   const topMissions = useMemo(() => [...missions]
     .filter(m => (topMetric === 'download' ? getBestDownload(m) : getBestUpload(m)) > 0)
     .sort((a, b) => (topMetric === 'download' ? getBestDownload(b) - getBestDownload(a) : getBestUpload(b) - getBestUpload(a)))
-    .slice(0, 10), [missions, topMetric]);
+    .slice(0, 20), [missions, topMetric]);
 
   const kpis = useMemo(() => [
     { label: t('total_missions'),    value: String(summary?.total_missions ?? missions.length), icon: KPI_ICONS.globe,    color: 'accent', unit: '' },
@@ -323,48 +325,56 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
 
       {/* Bottom Row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        {/* Top 10 */}
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <div className="section-title" style={{ marginBottom: 0 }}>{t('top_missions')}</div>
-            <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-base)', padding: '4px', borderRadius: '8px' }}>
-               <button onClick={() => setTopMetric('download')} className={`btn ${topMetric === 'download' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>↓ {t('avg_download')}</button>
-               <button onClick={() => setTopMetric('upload')} className={`btn ${topMetric === 'upload' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>↑ {t('avg_upload')}</button>
+
+        {/* ── En İyi Misyonlar ── */}
+        <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', height: '420px' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Trophy size={15} color="var(--amber)" />
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>{t('top_missions')}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-base)', padding: '3px', borderRadius: '8px' }}>
+              <button onClick={() => setTopMetric('download')} className={`btn ${topMetric === 'download' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '3px 10px', fontSize: '0.72rem' }}>↓ {t('avg_download')}</button>
+              <button onClick={() => setTopMetric('upload')}   className={`btn ${topMetric === 'upload'   ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '3px 10px', fontSize: '0.72rem' }}>↑ {t('avg_upload')}</button>
             </div>
           </div>
+
           {topMissions.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', padding: '32px 0' }}>
-              Henüz bu metrik için hız verisi yok
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-muted)' }}>
+              <TrendingUp size={28} style={{ opacity: 0.2 }} />
+              <span style={{ fontSize: '0.8rem' }}>Henüz hız verisi yok</span>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {topMissions.map((m, i) => {
-                const isDl = topMetric === 'download';
-                const v = isDl ? getBestDownload(m) : getBestUpload(m);
-                const alt = isDl ? getBestUpload(m) : getBestDownload(m);
-                const maxV = isDl ? getBestDownload(topMissions[0]) : getBestUpload(topMissions[0]);
-                const pct = maxV > 0 ? (v / maxV) * 100 : 0;
-                const rankClass = i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : 'rank-other';
-                
-                const pctColor = isDl ? (i < 3 ? 'linear-gradient(90deg, #38bdf8, #06b6d4)' : '#38bdf8')
-                                     : (i < 3 ? 'linear-gradient(90deg, #a855f7, #c084fc)' : '#a855f7');
-                
+                const isDl   = topMetric === 'download';
+                const v      = isDl ? getBestDownload(m) : getBestUpload(m);
+                const alt    = isDl ? getBestUpload(m)   : getBestDownload(m);
+                const maxV   = isDl ? getBestDownload(topMissions[0]) : getBestUpload(topMissions[0]);
+                const pct    = maxV > 0 ? (v / maxV) * 100 : 0;
+                const rankClass  = i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : 'rank-other';
+                const barColor   = isDl
+                  ? (i < 3 ? 'linear-gradient(90deg,#38bdf8,#06b6d4)' : '#38bdf8')
+                  : (i < 3 ? 'linear-gradient(90deg,#a855f7,#c084fc)' : '#a855f7');
+                const valColor   = isDl ? '#38bdf8' : '#a855f7';
+                const altColor   = isDl ? '#a855f7' : '#38bdf8';
                 return (
-                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div className={`rank-badge ${rankClass}`}>{i + 1}</div>
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                    <div className={`rank-badge ${rankClass}`} style={{ flexShrink: 0 }}>{i + 1}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</div>
-                      <div className="progress-bar" style={{ marginTop: 4, height: 6, background: 'var(--bg-base)' }}>
-                        <div className="progress-fill" style={{ width: `${pct}%`, background: pctColor }}/>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>{m.name}</div>
+                      <div style={{ height: 5, background: 'var(--bg-base)', borderRadius: 99, overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: barColor, transition: 'width 0.6s ease' }}/>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
-                       <div style={{ fontSize: '0.85rem', fontWeight: 800, color: isDl ? '#38bdf8' : '#a855f7' }}>
-                          {v.toFixed(1)} <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>Mbps</span>
-                       </div>
-                       <div style={{ fontSize: '0.65rem', fontWeight: 600, color: isDl ? '#a855f7' : '#38bdf8', opacity: 0.8 }}>
-                          {isDl ? '↑' : '↓'} {alt.toFixed(1)} Mbps
-                       </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0, minWidth: 68 }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800, color: valColor, lineHeight: 1 }}>
+                        {v.toFixed(1)}<span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 500, marginLeft: 2 }}>Mbps</span>
+                      </span>
+                      <span style={{ fontSize: '0.62rem', fontWeight: 500, color: altColor, opacity: 0.75, marginTop: 1 }}>
+                        {isDl ? '↑' : '↓'} {alt.toFixed(1)} Mbps
+                      </span>
                     </div>
                   </div>
                 );
@@ -373,36 +383,95 @@ export default function Dashboard({ missions, summary, continentReports, vpntype
           )}
         </div>
 
-        {/* Activity Feed */}
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div className="section-title" style={{ marginBottom: 0 }}>Canlı Aktivite</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div className="activity-dot pulse-dot" style={{ background: '#38bdf8' }}/>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>WebSocket</span>
+        {/* ── Canlı Aktivite ── */}
+        <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', height: '420px' }}>
+          {/* Header — same height as top missions */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="pulse-dot" style={{ width: 8, height: 8, background: '#38bdf8', borderRadius: '50%', flexShrink: 0 }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>Canlı Aktivite</span>
             </div>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 7px' }}>WebSocket</span>
           </div>
-          {activityFeed.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', padding: '32px 0' }}>
-              <Wifi size={32} style={{ margin: '0 auto 12px', opacity: 0.3, display: 'block' }}/>
-              Canlı veri bekleniyor...
-            </div>
-          ) : (
-            <div style={{ overflowY: 'auto', maxHeight: '280px' }}>
-              {activityFeed.slice(0, 15).map(a => (
-                <div key={a.id} className="activity-item">
-                  <div className="activity-dot" style={{ background: vpnColor(a.vpnType), marginTop: 5 }}/>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.missionName}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      <span style={{ color: vpnColor(a.vpnType) }}>{a.vpnType}</span>
-                      {' · '}↓{fmt(a.download, 1)} / ↑{fmt(a.upload, 1)} Mbps · {fmt(a.latency, 0)}ms
+
+          {/* Tabs — same pill style as metric toggle */}
+          <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-base)', padding: '3px', borderRadius: '8px', marginBottom: '12px', flexShrink: 0 }}>
+            <button onClick={() => setActivityTab('speedtest')} className={`btn ${activityTab === 'speedtest' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex: 1, padding: '3px 8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              <Zap size={11} /> Speed Test
+              {activityFeed.length > 0 && <span style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, fontSize: '0.6rem', padding: '0 4px', fontWeight: 700 }}>{activityFeed.length}</span>}
+            </button>
+            <button onClick={() => setActivityTab('sdwan')} className={`btn ${activityTab === 'sdwan' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex: 1, padding: '3px 8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              <Activity size={11} /> SDWAN
+              {sdwanFeed.length > 0 && <span style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, fontSize: '0.6rem', padding: '0 4px', fontWeight: 700 }}>{sdwanFeed.length}</span>}
+            </button>
+          </div>
+
+          {/* Speed Test Tab */}
+          {activityTab === 'speedtest' && (
+            activityFeed.length === 0 ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-muted)' }}>
+                <Wifi size={28} style={{ opacity: 0.2 }} />
+                <span style={{ fontSize: '0.8rem' }}>Canlı veri bekleniyor...</span>
+              </div>
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {activityFeed.slice(0, 30).map(a => (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                    {/* VPN badge */}
+                    <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: `${vpnColor(a.vpnType)}22`, color: vpnColor(a.vpnType), border: `1px solid ${vpnColor(a.vpnType)}44`, flexShrink: 0, minWidth: 38, textAlign: 'center' }}>
+                      {a.vpnType}
+                    </span>
+                    {/* Mission + speeds */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.missionName}</div>
+                      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 1 }}>
+                        <span style={{ color: '#38bdf8' }}>↓{fmt(a.download, 1)}</span>
+                        <span style={{ margin: '0 3px', opacity: 0.4 }}>·</span>
+                        <span style={{ color: '#a855f7' }}>↑{fmt(a.upload, 1)}</span>
+                        <span style={{ margin: '0 3px', opacity: 0.4 }}>·</span>
+                        <span style={{ color: '#f59e0b' }}>⏱{fmt(a.latency, 0)}ms</span>
+                      </div>
                     </div>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', flexShrink: 0 }}>{a.time}</span>
                   </div>
-                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', flexShrink: 0 }}>{a.time}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* SDWAN Tab */}
+          {activityTab === 'sdwan' && (
+            sdwanFeed.length === 0 ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-muted)' }}>
+                <Wifi size={28} style={{ opacity: 0.2 }} />
+                <span style={{ fontSize: '0.8rem' }}>SDWAN webhook bekleniyor...</span>
+              </div>
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {sdwanFeed.slice(0, 30).map(s => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                    {/* SDWAN badge */}
+                    <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.3)', flexShrink: 0, minWidth: 38, textAlign: 'center' }}>
+                      SW
+                    </span>
+                    {/* Mission + interface */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.missionName}</div>
+                      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 1 }}>
+                        {s.activeInterface
+                          ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{s.activeInterface}</span>
+                          : <span style={{ opacity: 0.5 }}>interface —</span>
+                        }
+                        {s.activeMemberSeq !== null && <span style={{ opacity: 0.5, marginLeft: 4 }}>seq {s.activeMemberSeq}</span>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', flexShrink: 0 }}>{s.time}</span>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </div>
       </div>

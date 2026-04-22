@@ -104,6 +104,27 @@ export const useNocSummary = (period: 'daily' | 'weekly' | 'monthly') => {
   });
 };
 
+export const useSdwanStability = (period: '7d' | '30d' | '90d', continent?: string, country?: string, cityId?: string) =>
+  useQuery({
+    queryKey: ['sdwanStability', period, continent, country, cityId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ period });
+      if (continent) params.append('continent', continent);
+      if (country) params.append('country', country);
+      if (cityId) params.append('cityId', cityId);
+      return (await axios.get(`${API_BASE}/reports/sdwan-stability?${params}`)).data;
+    },
+    staleTime: 60_000,
+  });
+
+export const useSdwanTimeseries = (period: '7d' | '30d' | '90d', cityId: number | null) =>
+  useQuery({
+    queryKey: ['sdwanTimeseries', period, cityId],
+    queryFn: async () => (await axios.get(`${API_BASE}/reports/sdwan-stability/timeseries?period=${period}&cityId=${cityId}`)).data,
+    enabled: cityId !== null,
+    staleTime: 60_000,
+  });
+
 // 3. Misyon Yönetimi Mutasyonları
 export const useCityMutations = () => {
   const queryClient = useQueryClient();
