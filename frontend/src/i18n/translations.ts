@@ -105,7 +105,7 @@ const translations = {
     report_continents:  'Kıta',
     report_vpntypes:    'Hat Tipi',
     report_all:              'Tüm Kayıtlar',
-    report_sdwan_stability:  'SDWAN İstikrar',
+    report_sdwan_stability:  'SDWAN Link Stabilite',
     sdwan_most_switches:     'En Çok Geçiş',
     sdwan_most_stable:       'En Stabil',
     sdwan_most_unstable:     'En Kararsız',

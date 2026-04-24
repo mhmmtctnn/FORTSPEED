@@ -358,7 +358,7 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
   // Her SdwanHistory satırı = bir member geçiş olayı (FromInterface → ToInterface)
   fastify.get('/api/reports/sdwan-stability', async (request, reply) => {
     const { period, continent, country, cityId } = request.query as { period?: string; continent?: string; country?: string; cityId?: string };
-    const periodDays = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+    const periodDays = period === '7d' ? 7 : period === '1d' ? 1 : period === '90d' ? 90 : 30;
 
     try {
       // Geçiş sayısı + son geçiş + geçiş/gün
@@ -431,6 +431,22 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
         lastSwitch:     r.last_switch,
       });
 
+      const { rows: linkRows } = await fastify.pg.query(`
+        SELECT c.CityID, c.CityName AS city_name,
+          COUNT(*) FILTER (WHERE e.NewState = 'dead')  AS down_count,
+          COUNT(*) FILTER (WHERE e.NewState = 'alive') AS up_count,
+          COUNT(DISTINCT e.Interface)                  AS interface_count,
+          MAX(e.EventAt) AS last_event
+        FROM SdwanLinkEvents e
+        JOIN Cities c ON c.CityID = e.CityID
+        WHERE e.EventAt >= NOW() - ($1 || ' days')::interval
+          AND ($2::text IS NULL OR c.KITA = $2)
+          AND ($3::text IS NULL OR c.ULKE = $3)
+          AND ($4::int  IS NULL OR e.CityID = $4)
+        GROUP BY c.CityID, c.CityName
+        ORDER BY down_count DESC
+      `, [periodDays, continent || null, country || null, cityId ? Number(cityId) : null]);
+
       return reply.send({
         summary: {
           totalSwitches,
@@ -445,6 +461,14 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
           cityName:    r.city_name,
           memberName:  r.member_name,
           activations: Number(r.activations),
+        })),
+        linkDownEvents: linkRows.map((r: any) => ({
+          cityId:         Number(r.cityid),
+          cityName:       r.city_name,
+          downCount:      Number(r.down_count),
+          upCount:        Number(r.up_count),
+          interfaceCount: Number(r.interface_count),
+          lastEvent:      r.last_event,
         })),
       });
     } catch (err) {

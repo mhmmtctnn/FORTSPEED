@@ -5,6 +5,7 @@ import { FindCityIdFn } from '../helpers/find-city-id';
 import {
   convertToMbps, resolveVpnType, parseSpeedTestBody, detectPayloadType,
   parseSdwanMembers, parseSdwanStatus, parseSdwanJson, parsePayloadTimestamp,
+  parseSdwanLinkState,
 } from '../helpers/webhook-parser';
 
 interface WebhookRingEntry {
@@ -43,17 +44,19 @@ export async function registerWebhookRoutes(
 
     fastify.log.info(`Webhook recv: type=${payloadType} len=${rawBody.length} queryDevice=${queryDevice}`);
 
-    webhookRing.push({
-      ts: new Date().toISOString(),
-      method: request.method,
-      url: request.url,
-      type: payloadType,
-      bodySnippet: rawBody.slice(0, 600),
-      ip: request.ip || 'UNKNOWN',
-    });
-    if (webhookRing.length > 10) webhookRing.shift();
+    const isSdwan = payloadType === 'sdwan_members' || payloadType === 'sdwan_status' || payloadType === 'sdwan_combined' || payloadType === 'sdwan_json' || payloadType === 'sdwan_linkstate';
 
-    const isSdwan = payloadType === 'sdwan_members' || payloadType === 'sdwan_status' || payloadType === 'sdwan_combined' || payloadType === 'sdwan_json';
+    if (!isSdwan) {
+      webhookRing.push({
+        ts: new Date().toISOString(),
+        method: request.method,
+        url: request.url,
+        type: payloadType,
+        bodySnippet: rawBody.slice(0, 600),
+        ip: request.ip || 'UNKNOWN',
+      });
+      if (webhookRing.length > 10) webhookRing.shift();
+    }
     let webhookLogId: number | null = null;
     try {
       const logRes = await fastify.pg.query<{ webhooklogid: number }>(
@@ -115,7 +118,7 @@ export async function registerWebhookRoutes(
             [cityId, activeMemberSeq, activeInterface]
           );
 
-          if (prevInterface !== activeInterface && activeInterface !== null && prevInterface !== activeInterface) {
+          if (prevInterface !== activeInterface && activeInterface !== null) {
             await fastify.pg.query(
               `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID)
                SELECT $1, $2, $3, $4
@@ -183,7 +186,7 @@ export async function registerWebhookRoutes(
                SET ActiveSeqID = EXCLUDED.ActiveSeqID, ActiveInterface = EXCLUDED.ActiveInterface, UpdatedAt = NOW()`,
             [cityId, activeMemberSeq, activeInterface]
           );
-          if (prevInterface !== activeInterface && activeInterface !== null && prevInterface !== activeInterface) {
+          if (prevInterface !== activeInterface && activeInterface !== null) {
             await fastify.pg.query(
               `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID)
                SELECT $1, $2, $3, $4
@@ -295,9 +298,18 @@ export async function registerWebhookRoutes(
           [cityId, activeMemberSeq, activeInterface]
         );
 
-        if (prevInterface2 !== activeInterface) {
+        if (prevInterface2 !== activeInterface && activeInterface !== null) {
           await fastify.pg.query(
-            `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID) VALUES ($1, $2, $3, $4)`,
+            `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID)
+             SELECT $1, $2, $3, $4
+             WHERE COALESCE($2::text, '') <> $3
+               AND NOT EXISTS (
+                 SELECT 1 FROM SdwanHistory
+                 WHERE CityID = $1
+                   AND COALESCE(FromInterface, '') = COALESCE($2::text, '')
+                   AND ToInterface = $3
+                   AND RecordedAt > NOW() - INTERVAL '2 minutes'
+               )`,
             [cityId, prevInterface2, activeInterface, activeMemberSeq]
           );
         }
@@ -313,6 +325,43 @@ export async function registerWebhookRoutes(
         return reply.send({ status: 'OK', type: 'sdwan_status', device: deviceName, activeMemberSeq, activeInterface });
       } catch (err) {
         fastify.log.error(err, 'SDWAN status DB error');
+        return reply.status(500).send({ status: 'Error', message: 'DB error' });
+      }
+    }
+
+    // ── SDWAN LINKSTATE ───────────────────────────────────────────────────────
+    if (payloadType === 'sdwan_linkstate') {
+      try {
+        const events = parseSdwanLinkState(rawBody);
+        let processed = 0;
+        for (const ev of events) {
+          if (!ev.deviceName || !ev.interface || !ev.newState) continue;
+          const cityId = await findCityId(ev.deviceName);
+          if (!cityId) {
+            fastify.log.warn(`SDWAN linkstate UNKNOWN_DEVICE: ${ev.deviceName}`);
+            continue;
+          }
+          await fastify.pg.query(
+            `INSERT INTO SdwanLinkEvents (CityID, Interface, OldState, NewState, EventAt)
+             SELECT $1, $2::varchar, $3::varchar, $4::varchar, $5
+             WHERE NOT EXISTS (
+               SELECT 1 FROM SdwanLinkEvents
+               WHERE CityID = $1 AND Interface = $2::varchar AND NewState = $4::varchar
+                 AND EventAt > NOW() - INTERVAL '30 seconds'
+             )`,
+            [cityId, ev.interface, ev.oldState ?? null, ev.newState, ev.eventAt ?? new Date()]
+          );
+          await redis.publish('speedtest_updates', JSON.stringify({
+            type: 'sdwan_linkstate', cityId, interface: ev.interface,
+            oldState: ev.oldState, newState: ev.newState,
+            eventAt: (ev.eventAt ?? new Date()).toISOString(),
+          }));
+          processed++;
+        }
+        fastify.log.info(`SDWAN linkstate: ${processed} olay işlendi`);
+        return reply.send({ status: 'OK', type: 'sdwan_linkstate', processed });
+      } catch (err) {
+        fastify.log.error(err, 'SDWAN linkstate DB error');
         return reply.status(500).send({ status: 'Error', message: 'DB error' });
       }
     }
@@ -436,7 +485,9 @@ export async function registerWebhookRoutes(
     try {
       const logs = await fastify.pg.query(
         `SELECT SourceIP, RawPayload, ParsedContext, CreatedAt
-         FROM WebhookLogs ORDER BY CreatedAt DESC LIMIT 10`
+         FROM WebhookLogs
+         WHERE (ParsedContext->>'isSdwan')::boolean IS NOT TRUE
+         ORDER BY CreatedAt DESC LIMIT 10`
       );
       const stats = await fastify.pg.query(
         `SELECT ss.StatID, c.CityName, vt.VpnTypeName,
@@ -462,6 +513,7 @@ export async function registerWebhookRoutes(
         `SELECT DATE(CreatedAt) as day, COUNT(*) as count
          FROM WebhookLogs
          WHERE CreatedAt >= NOW() - INTERVAL '7 days'
+           AND (ParsedContext->>'isSdwan')::boolean IS NOT TRUE
          GROUP BY DATE(CreatedAt)
          ORDER BY day DESC`
       );

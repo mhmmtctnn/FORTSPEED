@@ -6,7 +6,7 @@
  */
 
 /** Payload türünü otomatik tespit et — combined: hem members hem status aynı body'de */
-export function detectPayloadType(body: string): 'speedtest' | 'sdwan_members' | 'sdwan_status' | 'sdwan_combined' | 'sdwan_json' | 'unknown' {
+export function detectPayloadType(body: string): 'speedtest' | 'sdwan_members' | 'sdwan_status' | 'sdwan_combined' | 'sdwan_json' | 'sdwan_linkstate' | 'unknown' {
   // Guard: oversized body'yi reddet (ReDoS önleme)
   if (body.length > 1_000_000) return 'unknown';
 
@@ -22,6 +22,8 @@ export function detectPayloadType(body: string): 'speedtest' | 'sdwan_members' |
   if (/diagnose[ \t]+sys[ \t]+session[^\n]*sdwan|show[ \t]+system[ \t]+sdwan/i.test(body)) return 'sdwan_status';
   // "diagnose sys sdwan member" çıktısı: "member N:name=IFACE_NAME" satırı içerir
   if (/member[ \t]+\d+:name=\S/.test(body)) return 'sdwan_status';
+  // FortiGate SDWAN SLA health-check log (logid="0113022933")
+  if (/logid="0113022933"/.test(body)) return 'sdwan_linkstate';
   // JSON format: {"deviceName":"...","members":[...],...} veya {"sdwan":{...}}
   try {
     const j = JSON.parse(body);
@@ -329,4 +331,85 @@ export function parseSpeedTestBody(body: string) {
   }
 
   return { deviceName, vpnName, upValue, upUnit, downValue, downUnit, latencyMs };
+}
+
+/** Parse FortiGate SDWAN SLA health-check log (logid="0113022933").
+ *  Device name is extracted from the CLI header (e.g. "TELAVIV-BE  execute log filter reset").
+ *  Supports two event sub-formats:
+ *    - eventtype="SLA":          status="up"|"down"
+ *    - eventtype="Health Check": newvalue="alive"|"dead"
+ */
+export function parseSdwanLinkState(body: string): Array<{
+  deviceName: string | null;
+  interface:  string | null;
+  oldState:   string | null;
+  newState:   string | null;
+  eventAt:    Date | null;
+}> {
+  const results: Array<{
+    deviceName: string | null;
+    interface:  string | null;
+    oldState:   string | null;
+    newState:   string | null;
+    eventAt:    Date | null;
+  }> = [];
+
+  const kv = (s: string, key: string): string | null => {
+    const m = new RegExp(`\\b${key}="([^"]+)"`).exec(s);
+    return m ? m[1] : null;
+  };
+
+  const lines = body.split(/\r?\n/);
+
+  // Extract device name from CLI header line: "TELAVIV-BE  execute ..." or "TELAVIV-BE # ..."
+  let deviceName: string | null = null;
+  for (const line of lines) {
+    const m = line.match(/^\s*(\S+)\s+(?:#\s+)?execute\s+log\s+filter/i)
+           || line.match(/^\s*(\S+)\s+(?:#\s+)?execute\s+log\s+display/i)
+           || line.match(/^\s*(\S+)\s+#\s/);
+    if (m) { deviceName = m[1]; break; }
+  }
+
+  for (const line of lines) {
+    if (!line.includes('logid=')) continue;
+    const iface = kv(line, 'interface');
+    if (!iface) continue;
+
+    const date = kv(line, 'date');
+    const time = kv(line, 'time');
+    let eventAt: Date | null = null;
+    if (date && time) {
+      const tz = kv(line, 'tz') ?? '+03:00';
+      const d = new Date(`${date}T${time}${tz}`);
+      eventAt = isNaN(d.getTime()) ? null : d;
+    }
+
+    // SLA format: status="up"|"down"
+    const status = kv(line, 'status');
+    if (status === 'up' || status === 'down') {
+      results.push({
+        deviceName,
+        interface: iface,
+        oldState:  null,
+        newState:  status === 'up' ? 'alive' : 'dead',
+        eventAt,
+      });
+      continue;
+    }
+
+    // Health Check format: oldvalue="dead"|"alive", newvalue="dead"|"alive"
+    const newvalue = kv(line, 'newvalue');
+    const oldvalue = kv(line, 'oldvalue');
+    if (newvalue === 'alive' || newvalue === 'dead') {
+      results.push({
+        deviceName,
+        interface: iface,
+        oldState:  oldvalue ?? null,
+        newState:  newvalue,
+        eventAt,
+      });
+    }
+  }
+
+  return results;
 }

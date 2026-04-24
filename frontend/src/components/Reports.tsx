@@ -240,7 +240,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
   const [showAllVpnMissions, setShowAllVpnMissions] = useState(false);
   const [nocPeriod, setNocPeriod] = useState<'daily'|'weekly'|'monthly'>('monthly');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const [sdwanPeriod, setSdwanPeriod] = useState<'7d'|'30d'|'90d'>('30d');
+  const [sdwanPeriod, setSdwanPeriod] = useState<'1d'|'7d'|'30d'>('1d');
   const [sdwanTimeseriesCityId, setSdwanTimeseriesCityId] = useState<number|null>(null);
 
   const { data: nocData, isFetching: nocLoading } = useNocSummary(nocPeriod);
@@ -1149,16 +1149,16 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
           </div>
         )}
 
-        {/* SDWAN İstikrar Raporu */}
+        {/* SDWAN Link Stabilite Raporu */}
         {filters.reportType === 'sdwan-stability' && (
           <div className="fade-in">
             {/* Period seçici */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
-              {(['7d','30d','90d'] as const).map(p => (
+              {(['1d','7d','30d'] as const).map(p => (
                 <button key={p} className={`tab-btn ${sdwanPeriod === p ? 'active' : ''}`}
                   style={{ padding: '5px 14px', fontSize: '0.78rem' }}
                   onClick={() => { setSdwanPeriod(p); setSdwanTimeseriesCityId(null); }}>
-                  {p === '7d' ? t('quick_7d') : p === '30d' ? t('quick_30d') : t('quick_3m')}
+                  {p === '1d' ? t('quick_today') : p === '7d' ? t('quick_7d') : t('quick_30d')}
                 </button>
               ))}
             </div>
@@ -1197,7 +1197,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
 
               // ── unique mission count ──────────────────────────────────
               const missionCount = allMap.size;
-              const periodLabel = sdwanPeriod === '7d' ? '7 gün' : sdwanPeriod === '30d' ? '30 gün' : '90 gün';
+              const periodLabel = sdwanPeriod === '1d' ? '1 gün' : sdwanPeriod === '7d' ? '7 gün' : '30 gün';
 
               return (
                 <>
@@ -1352,6 +1352,59 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                       </table>
                     </div>
                   )}
+                  {/* ── Link Durum Olayları ── */}
+                  <div className="glass-card" style={{ marginTop: 16, overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>Link Durum Olayları</span>
+                      {(sdwanStability.linkDownEvents ?? []).length > 0 && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {(sdwanStability.linkDownEvents ?? []).length} misyon · Toplam{' '}
+                          <strong style={{ color: '#ef4444' }}>{(sdwanStability.linkDownEvents ?? []).reduce((s: number, e: any) => s + e.downCount, 0)}</strong> down,{' '}
+                          <strong style={{ color: '#22c55e' }}>{(sdwanStability.linkDownEvents ?? []).reduce((s: number, e: any) => s + e.upCount, 0)}</strong> up
+                        </span>
+                      )}
+                    </div>
+                    {(sdwanStability.linkDownEvents ?? []).length === 0 ? (
+                      <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                        Henüz link durum olayı yok
+                      </div>
+                    ) : (
+                      <table className="data-table" style={{ fontSize: '0.78rem' }}>
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Misyon</th>
+                            <th style={{ textAlign: 'center' }}>↓ Down</th>
+                            <th style={{ textAlign: 'center' }}>↑ Up</th>
+                            <th style={{ textAlign: 'center' }}>Link</th>
+                            <th>Son Olay</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(sdwanStability.linkDownEvents ?? []).map((ev: any, i: number) => (
+                            <tr key={i}>
+                              <td style={{ color: 'var(--text-muted)', width: 28 }}>{i + 1}</td>
+                              <td style={{ fontWeight: 500 }}>{ev.cityName}</td>
+                              <td style={{ textAlign: 'center' }}>
+                                {ev.downCount > 0
+                                  ? <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', borderRadius: 4, padding: '2px 8px', fontWeight: 700 }}>{ev.downCount}</span>
+                                  : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                {ev.upCount > 0
+                                  ? <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', borderRadius: 4, padding: '2px 8px', fontWeight: 700 }}>{ev.upCount}</span>
+                                  : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                              </td>
+                              <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{ev.interfaceCount}</td>
+                              <td style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                                {ev.lastEvent ? new Date(ev.lastEvent).toLocaleString('tr-TR') : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
                 </>
               );
             })()}

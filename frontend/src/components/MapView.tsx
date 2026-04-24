@@ -121,6 +121,7 @@ export default function MapView({
   const showFlagsRef = useRef(showFlags);
   showFlagsRef.current = showFlags;
   const mapReadyRef = useRef(false);
+  const imageMissingHandlerRef = useRef<((e: any) => void) | null>(null);
 
   // Kıta değişince ülkeleri filtrele
   const availableCountries = useMemo(() => {
@@ -207,6 +208,7 @@ export default function MapView({
   const emptyGeoJSON = useMemo(() => ({ type: 'FeatureCollection', features: [] } as any), []);
 
   const rafRef = useRef<number | null>(null);
+  const arcLastFrameRef = useRef<number>(0);
 
   // Arc koordinatlarını ve özelliklerini rAF döngüsü için ref'te sakla
   const arcFeaturesRef = useRef<Record<string, any[]>>({});
@@ -219,25 +221,22 @@ export default function MapView({
   }, [arcByTier]);
 
   useEffect(() => {
-    // GeoJSON segment yaklaşımı — zoom bağımsız animasyon.
-    // Her arc kendi koordinatından türetilen SABİT bir faz ofseti alır (stagger).
-    // Böylece aynı hız grubundaki arclar birbirinden bağımsız, kademeli hareket eder.
-    const TAIL = 12; // parlak kuyruk uzunluğu (koordinat sayısı)
+    const TAIL = 12;
+    const FRAME_MS = 50; // 20fps — arc animasyonu için yeterli, 60fps'e kıyasla GC baskısını 3x azaltır
 
-    // cyclePeriod: misyon→merkezFW arasında tek tur süresi (ms)
-    // Hız arttıkça animasyon hızlanır — renk sistemiyle tutarlı
-    //   poor      → ağır (3.5s)  — kırmızı, yavaş
-    //   good      → orta (2.0s)  — amber
-    //   excellent → hızlı (0.9s) — yeşil, hızlı
     const tiers = [
       { id: 'poor',      cyclePeriod: 3500 },
       { id: 'good',      cyclePeriod: 2000 },
       { id: 'excellent', cyclePeriod:  900 },
     ];
 
-    const animate = () => {
+    const animate = (timestamp: number) => {
+      rafRef.current = requestAnimationFrame(animate);
+      if (timestamp - arcLastFrameRef.current < FRAME_MS) return;
+      arcLastFrameRef.current = timestamp;
+
       const map = mapRef.current?.getMap();
-      if (!map || !mapReadyRef.current) { rafRef.current = requestAnimationFrame(animate); return; }
+      if (!map || !mapReadyRef.current) return;
 
       const now = Date.now();
       tiers.forEach(({ id, cyclePeriod }) => {
@@ -262,7 +261,7 @@ export default function MapView({
           features.push({
             type: 'Feature',
             geometry: { type: 'LineString', coordinates: coords.slice(segStart, segEnd + 1) },
-            properties: bf.properties || {}, // ID ve özellikleri aktarıyoruz!
+            properties: bf.properties || {},
           });
         });
 
@@ -271,8 +270,6 @@ export default function MapView({
           if (src?.setData) src.setData({ type: 'FeatureCollection', features });
         } catch { /* kaynak yükleniyor olabilir */ }
       });
-
-      rafRef.current = requestAnimationFrame(animate);
     };
 
     if (!showArcs) {
@@ -311,14 +308,12 @@ export default function MapView({
   // Bayrak layer'larını gerçekten oluşturan iç fonksiyon (map instance parametre olarak alınır)
   const doLoadFlags = useCallback(async (map: any) => {
     try {
-      console.info('[WorldFlags] GeoJSON yükleniyor...');
       const res = await fetch('/countries.geojson');
       if (!res.ok) throw new Error(`GeoJSON fetch failed: ${res.status}`);
       const geojson = await res.json();
 
       // Stil yüklemesi devam ediyorken de data eklenebilir. Olası hata try-catch ile yakalanır.
       if (!map.isStyleLoaded()) {
-        console.warn('[WorldFlags] Stil fetch sonrası hâlâ işleniyor, katmanlar eklenmeye zorlanıyor...');
       }
 
       const ISO_PROPS = [
@@ -360,14 +355,7 @@ export default function MapView({
         }))
         .filter((f: any) => f.iso2.length === 2);
 
-      if (featuresList.length > 0) {
-        console.info('[WorldFlags] ISO2 tespiti başarılı, örnek:', featuresList[0].iso2,
-          '| Toplam:', featuresList.length, 'ülke');
-      }
-
       if (featuresList.length === 0) {
-        const sampleProps = Object.keys((geojson.features?.[0]?.properties) || {}).slice(0, 12);
-        console.warn('[WorldFlags] ISO2 kodu bulunamadı. Props:', sampleProps.join(', '));
         return;
       }
 
@@ -403,14 +391,15 @@ export default function MapView({
         map.addSource('world-country-centers', { type: 'geojson', data: centersGeojson });
       }
 
-      // Bayrak görsellerini lazy yükle
+      // Bayrak görsellerini lazy yükle — önceki listener'ı kaldır, yenisini ekle
+      if (imageMissingHandlerRef.current) {
+        map.off('styleimagemissing', imageMissingHandlerRef.current);
+      }
       const onImageMissing = async (e: any) => {
         const id: string = e.id ?? e;
         if (!id.startsWith('fp-')) return;
-        
         const iso2 = id.slice(3);
-        if (!iso2 || iso2.length !== 2) return; // Boş URL oluşturmayı güvenli şekilde önler
-        
+        if (!iso2 || iso2.length !== 2) return;
         try {
           const img = await map.loadImage(`https://flagcdn.com/w640/${iso2}.png`);
           if (img?.data && !map.hasImage(id)) {
@@ -419,6 +408,7 @@ export default function MapView({
           }
         } catch { /* bayrak yüklenemedi, sessizce atla */ }
       };
+      imageMissingHandlerRef.current = onImageMissing;
       map.on('styleimagemissing', onImageMissing);
 
       const styleLayers = map.getStyle().layers;
@@ -461,19 +451,14 @@ export default function MapView({
 
 
       worldFlagsLoaded.current = true;
-      console.info('[WorldFlags] ✅ Bayraklar başarıyla yüklendi.',
-        uniqueCenters.length, 'ülke,', flagLayerIds.current.length, 'layer');
-    } catch (e) {
+    } catch {
       worldFlagsLoaded.current = false;
-      console.warn('[WorldFlags] ❌ Yüklenemedi:', e);
     }
   }, []);
 
   // loadWorldFlags: stil hazır mı kontrol et, hazırsa doLoadFlags çağır
   const loadWorldFlags = useCallback(() => {
-    console.warn('[WorldFlags-DEBUG] loadWorldFlags fonksiyonuna girildi!');
     const map = mapRef.current?.getMap();
-    console.warn(`[WorldFlags-DEBUG] Durum -> Map Var Mı: ${!!map}, Yüklendi Mi: ${worldFlagsLoaded.current}, showFlagsRef: ${showFlagsRef.current}`);
 
     if (!map || worldFlagsLoaded.current) return;
     if (!showFlagsRef.current) return;
@@ -481,17 +466,14 @@ export default function MapView({
     if (map.isStyleLoaded()) {
       doLoadFlags(map);
     } else {
-      console.info('[WorldFlags] Stil henüz yüklenmedi, bekleniyor...');
       let retryCount = 0;
       const timer = setInterval(() => {
         retryCount++;
         if (map.isStyleLoaded()) {
           clearInterval(timer);
-          console.info('[WorldFlags] Stil hazır, bayraklar yükleniyor...');
           doLoadFlags(map);
         } else if (retryCount >= 30) {
           clearInterval(timer);
-          console.warn('[WorldFlags] Stil 9sn içinde yüklenemedi');
         }
       }, 300);
     }
@@ -534,14 +516,12 @@ export default function MapView({
 
   // Garantili Map Initialization mekanizması (Sürekli Polling)
   useEffect(() => {
-    console.warn('[WorldFlags-DEBUG] Garantili başlatıcı devrede (Polling)...');
     const initTimer = setInterval(() => {
       const map = mapRef.current?.getMap();
       if (!map) return;
 
       if (map.isStyleLoaded()) {
         clearInterval(initTimer);
-        console.warn('[WorldFlags-DEBUG] Harita ve stil tamamen yüklendi! Bayrak yüklemesine geçiliyor.');
         mapReadyRef.current = true;
         softenMapLabels(map);
         loadWorldFlags();
@@ -560,7 +540,6 @@ export default function MapView({
 
   // showFlags prop güncellemeleri için
   useEffect(() => {
-    console.warn(`[WorldFlags-DEBUG] showFlags (${showFlags}) effect state değişikliği`);
     const map = mapRef.current?.getMap();
     if (!map) return;
     if (!showFlags) {
@@ -860,20 +839,18 @@ export default function MapView({
                 {activeStats.length === 0 ? (
                   <div style={{ height: '170px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', border: '1px solid var(--border)' }}>{t('no_stats_7d')}</div>
                 ) : (
-                  <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden', position: 'relative', height: '170px' }}>
-                    <div style={{ position: 'absolute', inset: 0 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={activeStats} margin={{ top: 14, right: 12, left: 0, bottom: 4 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
-                          <XAxis dataKey="time" hide fontSize={9}/>
-                          <YAxis stroke="var(--text-muted)" fontSize={9} width={32} domain={[0, chartYMax]}/>
-                          <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 10 }}/>
-                          <Legend wrapperStyle={{ fontSize: 10, paddingTop: '4px' }}/>
-                          <Line type="monotone" dataKey="download" stroke="var(--green)" strokeWidth={2} dot={false} name={`↓ ${t('download')} (Mbps)`}/>
-                          <Line type="monotone" dataKey="upload" stroke="var(--blue)" strokeWidth={2} dot={false} name={`↑ ${t('upload')} (Mbps)`}/>
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
+                  <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                    <ResponsiveContainer width="100%" height={170}>
+                      <LineChart data={activeStats} margin={{ top: 14, right: 12, left: 0, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
+                        <XAxis dataKey="time" hide fontSize={9}/>
+                        <YAxis stroke="var(--text-muted)" fontSize={9} width={32} domain={[0, chartYMax]}/>
+                        <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 10 }}/>
+                        <Legend wrapperStyle={{ fontSize: 10 }}/>
+                        <Line type="monotone" dataKey="download" stroke="var(--green)" strokeWidth={2} dot={false} name={`↓ ${t('download')} (Mbps)`}/>
+                        <Line type="monotone" dataKey="upload" stroke="var(--blue)" strokeWidth={2} dot={false} name={`↑ ${t('upload')} (Mbps)`}/>
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
                 )}
               </div>
