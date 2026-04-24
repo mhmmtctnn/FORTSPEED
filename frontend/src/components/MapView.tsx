@@ -105,6 +105,15 @@ export default function MapView({
   }, [filteredMissions, vpnMapFilter, tagFilter, speedFilter, sdwanByCity]);
 
   const activeStats = selectedVpnTab === 'GSM' ? statsGsm : selectedVpnTab === 'HUB' ? statsHub : statsMetro;
+
+  const chartYMax = (() => {
+    if (!activeStats.length) return 10;
+    const max = Math.max(...activeStats.flatMap(s => [s.download ?? 0, s.upload ?? 0]));
+    if (max <= 0) return 10;
+    const padded = max * 1.2;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(padded)));
+    return Math.ceil(padded / magnitude) * magnitude;
+  })();
   const mapRef = useRef<MapRef>(null);
   const worldFlagsLoaded = useRef(false);
   const flagLayerIds = useRef<string[]>([]);
@@ -675,7 +684,7 @@ export default function MapView({
           </div>
         </div>
 
-        <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
+        <div style={{ flex: 1, minHeight: 0, padding: '16px', overflowY: 'auto' }}>
           {!selectedMission ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>
               <Globe size={56} style={{ marginBottom: '16px', opacity: 0.2 }}/>
@@ -851,18 +860,20 @@ export default function MapView({
                 {activeStats.length === 0 ? (
                   <div style={{ height: '170px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', border: '1px solid var(--border)' }}>{t('no_stats_7d')}</div>
                 ) : (
-                  <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', paddingTop: '8px', paddingBottom: '4px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-                    <ResponsiveContainer width="100%" height={150}>
-                      <LineChart data={activeStats} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
-                        <XAxis dataKey="time" hide fontSize={9}/>
-                        <YAxis stroke="var(--text-muted)" fontSize={9} width={32}/>
-                        <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 10 }}/>
-                        <Legend wrapperStyle={{ fontSize: 10 }}/>
-                        <Line type="monotone" dataKey="download" stroke="var(--green)" strokeWidth={2} dot={false} name={`↓ ${t('download')} (Mbps)`}/>
-                        <Line type="monotone" dataKey="upload" stroke="var(--blue)" strokeWidth={2} dot={false} name={`↑ ${t('upload')} (Mbps)`}/>
-                      </LineChart>
-                    </ResponsiveContainer>
+                  <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden', position: 'relative', height: '170px' }}>
+                    <div style={{ position: 'absolute', inset: 0 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={activeStats} margin={{ top: 14, right: 12, left: 0, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
+                          <XAxis dataKey="time" hide fontSize={9}/>
+                          <YAxis stroke="var(--text-muted)" fontSize={9} width={32} domain={[0, chartYMax]}/>
+                          <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 10 }}/>
+                          <Legend wrapperStyle={{ fontSize: 10, paddingTop: '4px' }}/>
+                          <Line type="monotone" dataKey="download" stroke="var(--green)" strokeWidth={2} dot={false} name={`↓ ${t('download')} (Mbps)`}/>
+                          <Line type="monotone" dataKey="upload" stroke="var(--blue)" strokeWidth={2} dot={false} name={`↑ ${t('upload')} (Mbps)`}/>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 )}
               </div>
