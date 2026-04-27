@@ -451,22 +451,23 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
         SELECT
           c.CityID,
           c.CityName AS city_name,
-          t.Interface AS interface_type,
-          COUNT(*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '1 day')   AS down_1d,
-          COUNT(*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '7 days')  AS down_7d,
-          COUNT(*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '30 days') AS down_30d,
+          m.InterfaceName AS interface_type,
+          COUNT(t.*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '1 day')   AS down_1d,
+          COUNT(t.*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '7 days')  AS down_7d,
+          COUNT(t.*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '30 days') AS down_30d,
           MAX(l.NewState) AS current_state,
-          BOOL_OR(s.ActiveInterface = t.Interface) AS is_active_member
-        FROM transitions t
-        JOIN Cities c ON c.CityID = t.CityID
-        LEFT JOIN latest l ON l.CityID = t.CityID AND l.Interface = t.Interface
-        LEFT JOIN SdwanStatus s ON s.CityID = t.CityID
-        WHERE t.EventAt >= NOW() - INTERVAL '30 days'
-          AND ($1::text IS NULL OR c.KITA = $1)
+          BOOL_OR(s.ActiveInterface = m.InterfaceName) AS is_active_member,
+          BOOL_OR(s.ActiveInterface IS NOT NULL AND s.ActiveInterface != '') AS has_sdwan_status
+        FROM SdwanMembers m
+        JOIN Cities c ON c.CityID = m.CityID
+        LEFT JOIN SdwanStatus s ON s.CityID = m.CityID
+        LEFT JOIN transitions t ON t.CityID = m.CityID AND t.Interface = m.InterfaceName
+        LEFT JOIN latest l ON l.CityID = m.CityID AND l.Interface = m.InterfaceName
+        WHERE ($1::text IS NULL OR c.KITA = $1)
           AND ($2::text IS NULL OR c.ULKE = $2)
-          AND ($3::int  IS NULL OR t.CityID = $3)
-        GROUP BY c.CityID, c.CityName, t.Interface
-        ORDER BY c.CityName, t.Interface
+          AND ($3::int  IS NULL OR m.CityID = $3)
+        GROUP BY c.CityID, c.CityName, m.InterfaceName
+        ORDER BY c.CityName, m.InterfaceName
       `, [continent || null, country || null, cityId ? Number(cityId) : null]);
 
       return reply.send({
@@ -485,14 +486,15 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
           activations: Number(r.activations),
         })),
         linkDownEvents: linkRows.map((r: any) => ({
-          cityId:         Number(r.cityid),
-          cityName:       r.city_name,
-          interfaceType:  r.interface_type,
-          down1d:         Number(r.down_1d),
-          down7d:         Number(r.down_7d),
-          down30d:        Number(r.down_30d),
-          currentState:   r.current_state ?? null,
-          isActiveMember: r.is_active_member === true,
+          cityId:          Number(r.cityid),
+          cityName:        r.city_name,
+          interfaceType:   r.interface_type,
+          down1d:          Number(r.down_1d),
+          down7d:          Number(r.down_7d),
+          down30d:         Number(r.down_30d),
+          currentState:    r.current_state ?? null,
+          isActiveMember:  r.is_active_member === true,
+          hasSdwanStatus:  r.has_sdwan_status === true,
         })),
       });
     } catch (err) {

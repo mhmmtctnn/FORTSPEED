@@ -164,6 +164,12 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         return;
       }
 
+      // SDWAN linkstate — Link Durum Olayları tablosunu anında güncelle
+      if (msg.type === 'sdwan_linkstate') {
+        qc.invalidateQueries({ queryKey: ['sdwanStability'] });
+        return;
+      }
+
       // SDWAN olayları — activity feed'e değil sdwanFeed'e yönlendir
       if (msg.type === 'sdwan_combined' || msg.type === 'sdwan_status' || msg.type === 'sdwan_members') {
         let missionNameSdwan = '';

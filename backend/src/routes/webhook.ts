@@ -341,13 +341,19 @@ export async function registerWebhookRoutes(
             fastify.log.warn(`SDWAN linkstate UNKNOWN_DEVICE: ${ev.deviceName}`);
             continue;
           }
+          // Dedup: DB'deki en son state zaten aynıysa (dead→dead veya alive→alive) blokla.
+          // Farklı bir state geldiyse (alive→dead veya dead→alive) her zaman geçir.
           await fastify.pg.query(
             `INSERT INTO SdwanLinkEvents (CityID, Interface, OldState, NewState, EventAt)
              SELECT $1, $2::varchar, $3::varchar, $4::varchar, $5
              WHERE NOT EXISTS (
                SELECT 1 FROM SdwanLinkEvents
-               WHERE CityID = $1 AND Interface = $2::varchar AND NewState = $4::varchar
-                 AND EventAt > NOW() - INTERVAL '30 seconds'
+               WHERE CityID = $1 AND Interface = $2::varchar
+                 AND NewState = $4::varchar
+                 AND EventAt = (
+                   SELECT MAX(EventAt) FROM SdwanLinkEvents
+                   WHERE CityID = $1 AND Interface = $2::varchar
+                 )
              )`,
             [cityId, ev.interface, ev.oldState ?? null, ev.newState, ev.eventAt ?? new Date()]
           );

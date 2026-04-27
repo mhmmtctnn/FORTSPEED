@@ -1374,111 +1374,159 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                     const downBg = (n: number) =>
                       n === 0 ? 'transparent' : n < 10 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
 
-                    const ifaceBadgeStyle = (type: string, alive: boolean): React.CSSProperties => {
+                    const ifaceBadgeStyle = (type: string): React.CSSProperties => {
                       const t = type.toUpperCase();
                       const baseColor = t.includes('GSM') ? '#38bdf8' : t.includes('METRO') ? '#a78bfa' : t.includes('HUB') ? '#fb923c' : '#94a3b8';
                       return {
                         display: 'inline-flex', alignItems: 'center', gap: 4,
-                        padding: '2px 8px', borderRadius: 99, fontSize: '0.7rem', fontWeight: 700,
-                        background: `${baseColor}18`, color: baseColor,
-                        border: `1px solid ${baseColor}33`,
+                        padding: '2px 8px', borderRadius: 99, fontSize: '0.68rem', fontWeight: 700,
+                        background: `${baseColor}15`, color: baseColor,
+                        border: `1px solid ${baseColor}30`, whiteSpace: 'nowrap',
                       };
                     };
 
+                    const chipStyle: React.CSSProperties = {
+                      fontSize: '0.7rem', color: 'var(--text-muted)',
+                      background: 'rgba(255,255,255,0.04)', borderRadius: 99,
+                      padding: '3px 10px', border: '1px solid var(--border)',
+                    };
+
+                    // Grup renkleri: her misyon için accent rengi varyasyonu
+                    const groupAccents = ['#38bdf8','#a78bfa','#34d399','#fb923c','#f472b6','#facc15'];
+
+                    const durumBadge = (ev: any) => {
+                      const isAlive = ev.currentState === 'alive';
+                      const noData  = ev.currentState === null;
+                      const base: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 9px', borderRadius: 99, fontSize: '0.69rem', fontWeight: 700, whiteSpace: 'nowrap' as const };
+                      if (!ev.hasSdwanStatus) {
+                        if (noData)   return <span style={{ ...base, color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}>—</span>;
+                        return isAlive
+                          ? <span style={{ ...base, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.28)', color: '#38bdf8' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }}/>YEDEK</span>
+                          : <span style={{ ...base, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }}/>DOWN</span>;
+                      }
+                      if (ev.isActiveMember) return <span style={{ ...base, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.32)', color: '#22c55e' }}><span className="ldo-up-dot" style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }}/>UP</span>;
+                      if (noData)   return <span style={{ ...base, color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}>—</span>;
+                      return isAlive
+                        ? <span style={{ ...base, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.28)', color: '#38bdf8' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }}/>YEDEK</span>
+                        : <span style={{ ...base, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }}/>DOWN</span>;
+                    };
+
                     return (
-                      <div className="glass-card" style={{ marginTop: 16, overflow: 'hidden' }}>
-                        {/* Header */}
-                        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 3, height: 16, borderRadius: 99, background: 'var(--accent)' }}/>
-                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                              Link Durum Olayları
-                            </span>
+                      <>
+                        <style>{`
+                          @keyframes ldo-pulse-up {
+                            0%, 100% { box-shadow: 0 0 3px #22c55e; }
+                            50%       { box-shadow: 0 0 8px #22c55e, 0 0 16px rgba(34,197,94,0.2); }
+                          }
+                          .ldo-up-dot { animation: ldo-pulse-up 2.5s ease-in-out infinite; }
+                          .ldo-table td, .ldo-table th { padding: 6px 10px !important; }
+                          .ldo-table tbody tr:hover { background: rgba(255,255,255,0.03) !important; }
+                        `}</style>
+                        <div className="glass-card" style={{ marginTop: 16, overflow: 'hidden' }}>
+                          {/* Header */}
+                          <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ width: 4, height: 16, borderRadius: 99, background: 'var(--accent)' }}/>
+                              <span style={{ fontWeight: 700, fontSize: '0.78rem', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                Link Durum Olayları
+                              </span>
+                            </div>
+                            {missions.length > 0 && (
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={chipStyle}>
+                                  <span style={{ color: '#ef4444', fontWeight: 700 }}>{affectedMissions}</span> etkilenen misyon
+                                </span>
+                                <span style={chipStyle}>
+                                  Bugün <span style={{ color: '#ef4444', fontWeight: 700 }}>{totalDown1d}</span> down
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          {missions.length > 0 && (
-                            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                <span style={{ color: '#ef4444', fontWeight: 700 }}>{affectedMissions}</span> etkilenen misyon
-                              </span>
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                Bugün <span style={{ color: '#ef4444', fontWeight: 700 }}>{totalDown1d}</span> down
-                              </span>
+
+                          {missions.length === 0 ? (
+                            <div style={{ padding: '40px 16px', textAlign: 'center' }}>
+                              <div style={{ fontSize: '1.8rem', marginBottom: 10, opacity: 0.25 }}>🔗</div>
+                              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 500 }}>Henüz link durum olayı yok</div>
+                              <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: 6, opacity: 0.6 }}>SDWAN health-check olayları alındığında burada görünecek</div>
+                            </div>
+                          ) : (
+                            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                              <table className="data-table ldo-table" style={{ fontSize: '0.75rem' }}>
+                                <colgroup>
+                                  <col style={{ width: '22%' }} />
+                                  <col style={{ width: '13%' }} />
+                                  <col style={{ width: '21%' }} />
+                                  <col style={{ width: '11%' }} />
+                                  <col style={{ width: '11%' }} />
+                                  <col style={{ width: '11%' }} />
+                                </colgroup>
+                                <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                                  <tr>
+                                    <th>Misyon</th>
+                                    <th style={{ textAlign: 'center' }}>Durum</th>
+                                    <th>Link Tipi</th>
+                                    <th style={{ textAlign: 'center' }}>Bugün</th>
+                                    <th style={{ textAlign: 'center' }}>7 Gün</th>
+                                    <th style={{ textAlign: 'center' }}>30 Gün</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {missions.map((mission, mi) => {
+                                    const accent = groupAccents[mi % groupAccents.length];
+                                    const groupBg = mi % 2 === 1 ? 'rgba(255,255,255,0.016)' : undefined;
+                                    return mission.rows.map((ev: any, ri: number) => (
+                                      <tr key={`${ev.cityId}-${ev.interfaceType}`}
+                                        style={{
+                                          borderTop: ri === 0 && mi > 0 ? '1px solid rgba(255,255,255,0.07)' : undefined,
+                                          background: groupBg,
+                                        }}>
+                                        {ri === 0 && (
+                                          <td rowSpan={mission.rows.length}
+                                            style={{
+                                              verticalAlign: 'top', paddingTop: '9px !important' as any,
+                                              borderLeft: `3px solid ${accent}`,
+                                              borderRight: '1px solid var(--border)',
+                                            }}>
+                                            <div style={{ fontWeight: 700, fontSize: '0.78rem', color: 'var(--text-primary)', lineHeight: 1.3 }}>
+                                              {mission.cityName}
+                                            </div>
+                                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                              {mission.rows.length} link
+                                            </div>
+                                          </td>
+                                        )}
+                                        <td style={{ textAlign: 'center' }}>
+                                          {durumBadge(ev)}
+                                        </td>
+                                        <td>
+                                          <span style={ifaceBadgeStyle(ev.interfaceType)}>
+                                            {ev.interfaceType}
+                                          </span>
+                                        </td>
+                                        {([ev.down1d, ev.down7d, ev.down30d] as number[]).map((n, ci) => (
+                                          <td key={ci} style={{ textAlign: 'center' }}>
+                                            {n > 0 ? (
+                                              <span style={{
+                                                display: 'inline-block', minWidth: 32, padding: '1px 7px',
+                                                borderRadius: 99, fontWeight: 700,
+                                                color: downColor(n), background: downBg(n),
+                                                fontSize: '0.71rem',
+                                                border: `1px solid ${downColor(n)}40`,
+                                              }}>{n}</span>
+                                            ) : (
+                                              <span style={{ color: 'rgba(255,255,255,0.18)', fontSize: '0.7rem' }}>—</span>
+                                            )}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ));
+                                  })}
+                                </tbody>
+                              </table>
                             </div>
                           )}
                         </div>
-
-                        {missions.length === 0 ? (
-                          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                            Henüz link durum olayı yok
-                          </div>
-                        ) : (
-                          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-                          <table className="data-table" style={{ fontSize: '0.77rem' }}>
-                            <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                              <tr>
-                                <th style={{ width: 28 }}>#</th>
-                                <th>Misyon</th>
-                                <th>Link Tipi</th>
-                                <th style={{ textAlign: 'center', width: 72 }}>Bugün</th>
-                                <th style={{ textAlign: 'center', width: 72 }}>7 Gün</th>
-                                <th style={{ textAlign: 'center', width: 72 }}>30 Gün</th>
-                                <th style={{ textAlign: 'center', width: 64 }}>Durum</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {missions.map((mission, mi) =>
-                                mission.rows.map((ev: any, ri: number) => {
-                                  const isAlive = ev.currentState === 'alive';
-                                  return (
-                                    <tr key={`${ev.cityId}-${ev.interfaceType}`}
-                                      style={{ borderTop: ri === 0 && mi > 0 ? '1px solid var(--border)' : undefined }}>
-                                      {ri === 0 && (
-                                        <td rowSpan={mission.rows.length}
-                                          style={{ color: 'var(--text-muted)', fontWeight: 600, verticalAlign: 'middle', textAlign: 'center', width: 28 }}>
-                                          {mi + 1}
-                                        </td>
-                                      )}
-                                      {ri === 0 && (
-                                        <td rowSpan={mission.rows.length}
-                                          style={{ fontWeight: 700, color: 'var(--text-primary)', verticalAlign: 'middle', borderRight: '1px solid var(--border)' }}>
-                                          {mission.cityName}
-                                        </td>
-                                      )}
-                                      <td style={{ paddingLeft: 14 }}>
-                                        <span style={ifaceBadgeStyle(ev.interfaceType, isAlive)}>
-                                          {ev.interfaceType}
-                                        </span>
-                                      </td>
-                                      {([ev.down1d, ev.down7d, ev.down30d] as number[]).map((n, ci) => (
-                                        <td key={ci} style={{ textAlign: 'center' }}>
-                                          <span style={{
-                                            display: 'inline-block', minWidth: 32, padding: '1px 6px',
-                                            borderRadius: 4, fontWeight: n > 0 ? 700 : 400,
-                                            color: downColor(n), background: downBg(n),
-                                            fontSize: '0.75rem',
-                                          }}>{n}</span>
-                                        </td>
-                                      ))}
-                                      <td style={{ textAlign: 'center' }}>
-                                        {ev.isActiveMember
-                                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, color: '#22c55e' }}>
-                                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 5px #22c55e' }}/>UP</span>
-                                          : isAlive
-                                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, color: '#38bdf8' }}>
-                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', boxShadow: '0 0 5px #38bdf8' }}/>YEDEK</span>
-                                            : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, color: '#ef4444' }}>
-                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 5px #ef4444' }}/>DOWN</span>
-                                        }
-                                      </td>
-                                    </tr>
-                                  );
-                                })
-                              )}
-                            </tbody>
-                          </table>
-                          </div>
-                        )}
-                      </div>
+                      </>
                     );
                   })()}
                 </>

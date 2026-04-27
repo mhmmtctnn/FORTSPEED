@@ -4,6 +4,33 @@ All notable changes to FORTSPEED are documented here.
 
 ---
 
+## [v1.18.0] — 2026-04-27
+
+### SDWAN Stabilite UX Revamp: SdwanMembers Kaynaklı Tablo, durumBadge, WebSocket Canlı Yenileme
+
+#### Frontend — Reports.tsx
+- **SdwanMembers kaynaklı sorgu**: Tablo artık `SdwanMembers`'ı birincil kaynak olarak kullanıyor; sıfır link-state olayı olan interface'ler de tabloda görünüyor (önceden eksik satırlar oluşuyordu)
+- **`hasSdwanStatus` alanı**: Yeni backend flag'i (`BOOL_OR(s.ActiveInterface IS NOT NULL)`) frontend'in boş tablo yerine "SDWAN verisi yok" placeholder'ı göstermesini sağlıyor
+- **Ayrı `Durum` sütunu**: Durum badge'i kendi alanına (Link Tipi'nin soluna) taşındı — tek bakışla daha hızlı tarama
+- **`durumBadge()` helper**: Inline ternary zincirlerinin yerine merkezi badge renderer; UP / YEDEK / DOWN'u tutarlı renk-nokta + etiket formatıyla render eder
+- **Değişen grup gölgelendirmesi**: Çift/tek şehir grupları hafif arka plan tonu alıyor; şehir grubu başına renkli sol-kenar accent şeridi
+- **Hap şekilli sayaç badge'leri**: Down sayısı pill'leri `border-radius: 99` (kapsül şekli) + kenarlık kullanıyor; sıfır sayılar sessiz `—` tire olarak gösteriliyor
+- **`<colgroup>` genişlik ipuçları**: Sabit sütun genişlikleri sayılar değiştiğinde layout titrenmesini önlüyor
+- **Link sayısı alt etiketi**: Şehir adının altında "N link" göstergesi — interface sayısına hızlı bakış
+
+#### Frontend — App.tsx
+- `sdwan_linkstate` WebSocket mesajları artık anında `invalidateQueries(['sdwanStability'])` tetikliyor; Link-Down Events tablosu bir sonraki polling döngüsünü beklemeden gerçek zamanlı güncelleniyor
+
+#### Backend — webhook.ts
+- **Daha akıllı linkstate dedup**: 30 saniyelik zaman penceresi `NOT EXISTS (...WHERE NewState = $4 AND EventAt = MAX(EventAt)...)` son-durum karşılaştırmasıyla değiştirildi. Hızlı `alive→dead→alive` döngüleri artık doğru şekilde yakalanıyor; yalnızca birebir aynı olaylar engelleniyor
+
+#### Backend — reports.ts
+- `SdwanMembers LEFT JOIN transitions` yapısı: interface listesi event tablosundan değil, member tablosundan türetiliyor
+- `COUNT(t.*)` yerine `COUNT(t.*)` — NULL olmayan geçişler için açık sayım
+- `has_sdwan_status` yeni alan: `BOOL_OR(s.ActiveInterface IS NOT NULL AND s.ActiveInterface != '')` ile SDWAN verisi olup olmadığı belirleniyor
+
+---
+
 ## [v1.17.0] — 2026-04-27
 
 ### SDWAN Stabilite — Per-Interface Link-Down Tablosu & State Badge'leri

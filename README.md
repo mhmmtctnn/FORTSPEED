@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.17.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.17.0)
+[![Version](https://img.shields.io/badge/version-1.18.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.18.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -278,6 +278,28 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.18.0 — 2026-04-27
+
+**SDWAN Stabilite UX Revamp: SdwanMembers-driven table, `durumBadge`, WebSocket live refresh**
+
+#### 📊 Reports — Link-Down Events Table Overhaul
+- **SdwanMembers-driven query**: table now joins `SdwanMembers` as the primary source so all known interfaces appear even with zero link-state events — no more missing rows
+- **`hasSdwanStatus` field**: new backend flag (`BOOL_OR(s.ActiveInterface IS NOT NULL)`) lets the frontend show a "no SDWAN data" placeholder instead of an empty table
+- **Dedicated `Durum` column**: state badge moved to its own column (left of Link Tipi) for faster at-a-glance scanning
+- **`durumBadge()` helper**: centralized badge renderer replacing inline ternary chains; renders UP / YEDEK / DOWN with consistent color-dot + label format
+- **Alternating group shading**: even/odd city groups receive a subtle background tint; colored left-border accent stripe per city group for visual separation
+- **Pill-style count badges**: down count pills use `border-radius: 99` (capsule shape) with a border for a more polished look; zero counts render as a quiet `—` dash
+- **`<colgroup>` width hints**: fixed column widths prevent layout jitter when counts change
+- **Link count sub-label**: under the city name shows "N link" count for quick interface-count awareness
+
+#### ⚡ App.tsx — WebSocket Live Refresh
+- `sdwan_linkstate` WebSocket messages now trigger an immediate `invalidateQueries(['sdwanStability'])` so the Link-Down Events table updates in real-time without waiting for the next polling cycle
+
+#### 🔧 Backend — webhook.ts
+- **Smarter linkstate dedup**: 30-second time-window replaced with last-state comparison — `NOT EXISTS (... WHERE NewState = $4 AND EventAt = MAX(EventAt) ...)`. This allows rapid alive→dead→alive cycles to be captured correctly while still blocking exact duplicate events
+
+---
 
 ### v1.17.0 — 2026-04-27
 
