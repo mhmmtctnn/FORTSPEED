@@ -213,6 +213,234 @@ const StatCard = ({ title, value }: { title: string; value: string | number }) =
   </div>
 );
 
+// ── SDWAN Link Kararlılığı bölümü ──────────────────────────────────────────
+type StabKey = 'all' | 'stable' | 'moderate' | 'unstable';
+type SortKey = 'worstStab' | 'down30d' | 'down7d' | 'down1d' | 'name';
+
+function SdwanLinkStability({ linkDownEvents }: { linkDownEvents: any[] }) {
+  const [search,      setSearch]      = useState('');
+  const [stabFilter,  setStabFilter]  = useState<StabKey>('all');
+  const [sortKey,     setSortKey]     = useState<SortKey>('worstStab');
+
+  const stabOf = (n: number): 'stable' | 'moderate' | 'unstable' =>
+    n <= 5 ? 'stable' : n <= 20 ? 'moderate' : 'unstable';
+  const stabOrder = { unstable: 0, moderate: 1, stable: 2 };
+  const stabLabel = (s: string) => s === 'stable' ? 'Kararlı' : s === 'moderate' ? 'Orta' : 'Kararsız';
+  const stabColor = (s: string) => s === 'stable' ? '#22c55e' : s === 'moderate' ? '#f59e0b' : '#ef4444';
+  const stabBg    = (s: string) => s === 'stable' ? 'rgba(34,197,94,0.1)'   : s === 'moderate' ? 'rgba(245,158,11,0.1)'  : 'rgba(239,68,68,0.1)';
+  const stabBdr   = (s: string) => s === 'stable' ? 'rgba(34,197,94,0.28)'  : s === 'moderate' ? 'rgba(245,158,11,0.28)' : 'rgba(239,68,68,0.28)';
+
+  const stateBadge = (ev: any) => {
+    const isAlive = ev.currentState === 'alive';
+    const noData  = ev.currentState === null;
+    const base: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 99, fontSize: '0.61rem', fontWeight: 700, whiteSpace: 'nowrap' as const };
+    if (!ev.hasSdwanStatus) {
+      if (noData) return <span style={{ ...base, color: 'rgba(255,255,255,0.22)', fontWeight: 400 }}>—</span>;
+      return isAlive
+        ? <span style={{ ...base, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.28)', color: '#38bdf8' }}><span style={{ width: 4, height: 4, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }}/>YEDEK</span>
+        : <span style={{ ...base, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444' }}><span style={{ width: 4, height: 4, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }}/>DOWN</span>;
+    }
+    if (ev.isActiveMember) return <span style={{ ...base, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.32)', color: '#22c55e' }}><span className="slk-up-dot" style={{ width: 4, height: 4, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }}/>UP</span>;
+    if (noData) return <span style={{ ...base, color: 'rgba(255,255,255,0.22)', fontWeight: 400 }}>—</span>;
+    return isAlive
+      ? <span style={{ ...base, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.28)', color: '#38bdf8' }}><span style={{ width: 4, height: 4, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }}/>YEDEK</span>
+      : <span style={{ ...base, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444' }}><span style={{ width: 4, height: 4, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }}/>DOWN</span>;
+  };
+
+  const ifaceColor = (type: string) => {
+    const t = type.toUpperCase();
+    return t.includes('GSM') ? '#38bdf8' : t.includes('METRO') ? '#a78bfa' : t.includes('HUB') ? '#fb923c' : '#94a3b8';
+  };
+
+  const countCell = (n: number) => n > 0
+    ? <span style={{ fontSize: '0.7rem', fontWeight: 700, color: n < 10 ? '#f59e0b' : '#ef4444' }}>{n}</span>
+    : <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.18)' }}>—</span>;
+
+  const missionCards = useMemo(() => {
+    const mMap = new Map<number, { cityName: string; ifaces: any[] }>();
+    for (const ev of linkDownEvents) {
+      if (!mMap.has(ev.cityId)) mMap.set(ev.cityId, { cityName: ev.cityName, ifaces: [] });
+      mMap.get(ev.cityId)!.ifaces.push({ ...ev, stab: stabOf(ev.down30d) });
+    }
+    let cards = [...mMap.values()].map(m => ({
+      ...m,
+      worstStab: m.ifaces.reduce<string>((w, iface) =>
+        stabOrder[iface.stab as keyof typeof stabOrder] < stabOrder[w as keyof typeof stabOrder] ? iface.stab : w, 'stable'),
+    }));
+
+    // Filtrele
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      cards = cards.filter(m => m.cityName.toLowerCase().includes(q));
+    }
+    if (stabFilter !== 'all') {
+      cards = cards.filter(m => m.worstStab === stabFilter);
+    }
+
+    // Sırala
+    cards.sort((a, b) => {
+      if (sortKey === 'name')     return a.cityName.localeCompare(b.cityName);
+      if (sortKey === 'worstStab') return stabOrder[a.worstStab as keyof typeof stabOrder] - stabOrder[b.worstStab as keyof typeof stabOrder];
+      const getMax = (m: typeof a, key: 'down1d' | 'down7d' | 'down30d') => Math.max(...m.ifaces.map((i: any) => i[key] as number));
+      if (sortKey === 'down1d')  return getMax(b, 'down1d')  - getMax(a, 'down1d');
+      if (sortKey === 'down7d')  return getMax(b, 'down7d')  - getMax(a, 'down7d');
+      return getMax(b, 'down30d') - getMax(a, 'down30d');
+    });
+
+    return cards;
+  }, [linkDownEvents, search, stabFilter, sortKey]);
+
+  const ifaces30     = linkDownEvents.map(ev => stabOf(ev.down30d));
+  const cntStable    = ifaces30.filter(s => s === 'stable').length;
+  const cntModerate  = ifaces30.filter(s => s === 'moderate').length;
+  const cntUnstable  = ifaces30.filter(s => s === 'unstable').length;
+  const totalDown1d  = linkDownEvents.reduce((s, e) => s + e.down1d, 0);
+  const affMissions  = useMemo(() => [...new Set(linkDownEvents.filter(e => e.down1d > 0).map(e => e.cityId))].length, [linkDownEvents]);
+
+  const chipStyle: React.CSSProperties = {
+    fontSize: '0.7rem', color: 'var(--text-muted)',
+    background: 'rgba(255,255,255,0.04)', borderRadius: 99,
+    padding: '3px 10px', border: '1px solid var(--border)',
+  };
+  const filterBtnStyle = (active: boolean, color?: string): React.CSSProperties => ({
+    fontSize: '0.68rem', fontWeight: 600, padding: '3px 10px', borderRadius: 99, cursor: 'pointer',
+    border: active ? `1px solid ${color ?? 'var(--accent)'}` : '1px solid var(--border)',
+    background: active ? `${color ?? 'var(--accent)'}18` : 'transparent',
+    color: active ? (color ?? 'var(--accent)') : 'var(--text-muted)',
+    transition: 'all 0.15s',
+  });
+
+  const SORT_LABELS: Record<SortKey, string> = {
+    worstStab: 'Kararlılık',
+    down30d:   '30 Gün ↓',
+    down7d:    '7 Gün ↓',
+    down1d:    'Bugün ↓',
+    name:      'İsim A-Z',
+  };
+
+  return (
+    <>
+      <style>{`
+        @keyframes slk-pulse-up {
+          0%, 100% { box-shadow: 0 0 3px #22c55e; }
+          50%       { box-shadow: 0 0 8px #22c55e, 0 0 16px rgba(34,197,94,0.2); }
+        }
+        .slk-up-dot { animation: slk-pulse-up 2.5s ease-in-out infinite; }
+      `}</style>
+      <div className="glass-card" style={{ marginTop: 16, overflow: 'hidden' }}>
+
+        {/* ── Header ── */}
+        <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 4, height: 16, borderRadius: 99, background: 'var(--accent)' }}/>
+            <span style={{ fontWeight: 700, fontSize: '0.78rem', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>SDWAN Link Kararlılığı</span>
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>· 30g baz</span>
+          </div>
+          {linkDownEvents.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <span style={chipStyle}><span style={{ color: '#22c55e', fontWeight: 700 }}>{cntStable}</span> Kararlı</span>
+              <span style={chipStyle}><span style={{ color: '#f59e0b', fontWeight: 700 }}>{cntModerate}</span> Orta</span>
+              <span style={chipStyle}><span style={{ color: '#ef4444', fontWeight: 700 }}>{cntUnstable}</span> Kararsız</span>
+              {totalDown1d > 0 && <span style={chipStyle}>Bugün <span style={{ color: '#ef4444', fontWeight: 700 }}>{totalDown1d}</span> down · <span style={{ color: '#ef4444', fontWeight: 700 }}>{affMissions}</span> misyon</span>}
+            </div>
+          )}
+        </div>
+
+        {/* ── Filtre / Sıralama Çubuğu ── */}
+        {linkDownEvents.length > 0 && (
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'rgba(0,0,0,0.12)' }}>
+            {/* Arama */}
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Misyon ara…"
+              style={{ fontSize: '0.72rem', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'rgba(255,255,255,0.04)', color: 'var(--text-primary)', outline: 'none', minWidth: 140, maxWidth: 200 }}
+            />
+            {/* Kararlılık filtresi */}
+            <div style={{ display: 'flex', gap: 5 }}>
+              {(['all','stable','moderate','unstable'] as StabKey[]).map(k => (
+                <button key={k} onClick={() => setStabFilter(k)} style={filterBtnStyle(stabFilter === k, k === 'stable' ? '#22c55e' : k === 'moderate' ? '#f59e0b' : k === 'unstable' ? '#ef4444' : undefined)}>
+                  {k === 'all' ? 'Tümü' : stabLabel(k)}
+                </button>
+              ))}
+            </div>
+            {/* Sıralama */}
+            <select
+              value={sortKey}
+              onChange={e => setSortKey(e.target.value as SortKey)}
+              style={{ marginLeft: 'auto', fontSize: '0.7rem', padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer', outline: 'none' }}
+            >
+              {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
+                <option key={k} value={k}>{SORT_LABELS[k]}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* ── İçerik ── */}
+        {linkDownEvents.length === 0 ? (
+          <div style={{ padding: '40px 16px', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.8rem', marginBottom: 10, opacity: 0.25 }}>🔗</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 500 }}>Henüz link verisi yok</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: 6, opacity: 0.6 }}>SDWAN health-check olayları alındığında burada görünecek</div>
+          </div>
+        ) : missionCards.length === 0 ? (
+          <div style={{ padding: '30px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+            Filtre kriterlerine uyan misyon bulunamadı
+          </div>
+        ) : (
+          <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 10 }}>
+            {missionCards.map((mission, mi) => (
+              <div key={mi} style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid var(--border)', borderTop: `2px solid ${stabColor(mission.worstStab)}`, borderRadius: 8, overflow: 'hidden' }}>
+
+                {/* Kart başlığı */}
+                <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {mission.cityName}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{mission.ifaces.length} link</span>
+                    <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 9px', borderRadius: 99, color: stabColor(mission.worstStab), background: stabBg(mission.worstStab), border: `1px solid ${stabBdr(mission.worstStab)}` }}>
+                      {stabLabel(mission.worstStab)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sütun başlıkları */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 66px 50px 50px 54px 72px', gap: 4, padding: '5px 12px 4px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  {(['LINK', 'DURUM', 'BUGÜN', '7 GÜN', '30 GÜN', 'KARARLIL.'] as const).map((h, hi) => (
+                    <span key={hi} style={{ fontSize: '0.57rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: hi > 0 ? 'center' : undefined }}>{h}</span>
+                  ))}
+                </div>
+
+                {/* Interface satırları */}
+                {mission.ifaces.map((iface, ii) => (
+                  <div key={ii} style={{ display: 'grid', gridTemplateColumns: '1fr 66px 50px 50px 54px 72px', gap: 4, padding: '6px 12px', alignItems: 'center', borderBottom: ii < mission.ifaces.length - 1 ? '1px solid rgba(255,255,255,0.03)' : undefined }}>
+                    <span style={{ fontSize: '0.67rem', fontWeight: 700, color: ifaceColor(iface.interfaceType), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {iface.interfaceType}
+                    </span>
+                    <span style={{ textAlign: 'center' }}>{stateBadge(iface)}</span>
+                    <span style={{ textAlign: 'center' }}>{countCell(iface.down1d)}</span>
+                    <span style={{ textAlign: 'center' }}>{countCell(iface.down7d)}</span>
+                    <span style={{ textAlign: 'center' }}>{countCell(iface.down30d)}</span>
+                    <span style={{ textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '1px 7px', borderRadius: 99, color: stabColor(iface.stab), background: stabBg(iface.stab), border: `1px solid ${stabBdr(iface.stab)}` }}>
+                        {stabLabel(iface.stab)}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 export default function Reports({ missions, cityList, filters, filterOptions, summary, missionReports, countryReports, continentReports, vpntypeReports, reports, sparklines, loading, onFiltersChange, onApply }: Props) {
   const t = useT();
   const { locale } = useLanguage();
@@ -1352,183 +1580,8 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                       </table>
                     </div>
                   )}
-                  {/* ── Link Durum Olayları ── */}
-                  {(() => {
-                    const allEvents: any[] = sdwanStability.linkDownEvents ?? [];
-                    const missionMap = new Map<number, { cityName: string; rows: any[] }>();
-                    for (const ev of allEvents) {
-                      if (!missionMap.has(ev.cityId)) missionMap.set(ev.cityId, { cityName: ev.cityName, rows: [] });
-                      missionMap.get(ev.cityId)!.rows.push(ev);
-                    }
-                    const missions = [...missionMap.values()].sort((a, b) => {
-                      const aMax = Math.max(...a.rows.map((r: any) => r.down1d));
-                      const bMax = Math.max(...b.rows.map((r: any) => r.down1d));
-                      return bMax - aMax;
-                    });
-
-                    const totalDown1d = allEvents.reduce((s, e) => s + e.down1d, 0);
-                    const affectedMissions = missions.filter(m => m.rows.some((r: any) => r.down1d > 0)).length;
-
-                    const downColor = (n: number) =>
-                      n === 0 ? 'var(--text-muted)' : n < 10 ? '#f59e0b' : '#ef4444';
-                    const downBg = (n: number) =>
-                      n === 0 ? 'transparent' : n < 10 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
-
-                    const ifaceBadgeStyle = (type: string): React.CSSProperties => {
-                      const t = type.toUpperCase();
-                      const baseColor = t.includes('GSM') ? '#38bdf8' : t.includes('METRO') ? '#a78bfa' : t.includes('HUB') ? '#fb923c' : '#94a3b8';
-                      return {
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        padding: '2px 8px', borderRadius: 99, fontSize: '0.68rem', fontWeight: 700,
-                        background: `${baseColor}15`, color: baseColor,
-                        border: `1px solid ${baseColor}30`, whiteSpace: 'nowrap',
-                      };
-                    };
-
-                    const chipStyle: React.CSSProperties = {
-                      fontSize: '0.7rem', color: 'var(--text-muted)',
-                      background: 'rgba(255,255,255,0.04)', borderRadius: 99,
-                      padding: '3px 10px', border: '1px solid var(--border)',
-                    };
-
-                    // Grup renkleri: her misyon için accent rengi varyasyonu
-                    const groupAccents = ['#38bdf8','#a78bfa','#34d399','#fb923c','#f472b6','#facc15'];
-
-                    const durumBadge = (ev: any) => {
-                      const isAlive = ev.currentState === 'alive';
-                      const noData  = ev.currentState === null;
-                      const base: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 9px', borderRadius: 99, fontSize: '0.69rem', fontWeight: 700, whiteSpace: 'nowrap' as const };
-                      if (!ev.hasSdwanStatus) {
-                        if (noData)   return <span style={{ ...base, color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}>—</span>;
-                        return isAlive
-                          ? <span style={{ ...base, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.28)', color: '#38bdf8' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }}/>YEDEK</span>
-                          : <span style={{ ...base, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }}/>DOWN</span>;
-                      }
-                      if (ev.isActiveMember) return <span style={{ ...base, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.32)', color: '#22c55e' }}><span className="ldo-up-dot" style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }}/>UP</span>;
-                      if (noData)   return <span style={{ ...base, color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}>—</span>;
-                      return isAlive
-                        ? <span style={{ ...base, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.28)', color: '#38bdf8' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }}/>YEDEK</span>
-                        : <span style={{ ...base, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }}/>DOWN</span>;
-                    };
-
-                    return (
-                      <>
-                        <style>{`
-                          @keyframes ldo-pulse-up {
-                            0%, 100% { box-shadow: 0 0 3px #22c55e; }
-                            50%       { box-shadow: 0 0 8px #22c55e, 0 0 16px rgba(34,197,94,0.2); }
-                          }
-                          .ldo-up-dot { animation: ldo-pulse-up 2.5s ease-in-out infinite; }
-                          .ldo-table td, .ldo-table th { padding: 6px 10px !important; }
-                          .ldo-table tbody tr:hover { background: rgba(255,255,255,0.03) !important; }
-                        `}</style>
-                        <div className="glass-card" style={{ marginTop: 16, overflow: 'hidden' }}>
-                          {/* Header */}
-                          <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ width: 4, height: 16, borderRadius: 99, background: 'var(--accent)' }}/>
-                              <span style={{ fontWeight: 700, fontSize: '0.78rem', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                Link Durum Olayları
-                              </span>
-                            </div>
-                            {missions.length > 0 && (
-                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                <span style={chipStyle}>
-                                  <span style={{ color: '#ef4444', fontWeight: 700 }}>{affectedMissions}</span> etkilenen misyon
-                                </span>
-                                <span style={chipStyle}>
-                                  Bugün <span style={{ color: '#ef4444', fontWeight: 700 }}>{totalDown1d}</span> down
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {missions.length === 0 ? (
-                            <div style={{ padding: '40px 16px', textAlign: 'center' }}>
-                              <div style={{ fontSize: '1.8rem', marginBottom: 10, opacity: 0.25 }}>🔗</div>
-                              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 500 }}>Henüz link durum olayı yok</div>
-                              <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: 6, opacity: 0.6 }}>SDWAN health-check olayları alındığında burada görünecek</div>
-                            </div>
-                          ) : (
-                            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-                              <table className="data-table ldo-table" style={{ fontSize: '0.75rem' }}>
-                                <colgroup>
-                                  <col style={{ width: '22%' }} />
-                                  <col style={{ width: '13%' }} />
-                                  <col style={{ width: '21%' }} />
-                                  <col style={{ width: '11%' }} />
-                                  <col style={{ width: '11%' }} />
-                                  <col style={{ width: '11%' }} />
-                                </colgroup>
-                                <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                                  <tr>
-                                    <th>Misyon</th>
-                                    <th style={{ textAlign: 'center' }}>Durum</th>
-                                    <th>Link Tipi</th>
-                                    <th style={{ textAlign: 'center' }}>Bugün</th>
-                                    <th style={{ textAlign: 'center' }}>7 Gün</th>
-                                    <th style={{ textAlign: 'center' }}>30 Gün</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {missions.map((mission, mi) => {
-                                    const accent = groupAccents[mi % groupAccents.length];
-                                    const groupBg = mi % 2 === 1 ? 'rgba(255,255,255,0.016)' : undefined;
-                                    return mission.rows.map((ev: any, ri: number) => (
-                                      <tr key={`${ev.cityId}-${ev.interfaceType}`}
-                                        style={{
-                                          borderTop: ri === 0 && mi > 0 ? '1px solid rgba(255,255,255,0.07)' : undefined,
-                                          background: groupBg,
-                                        }}>
-                                        {ri === 0 && (
-                                          <td rowSpan={mission.rows.length}
-                                            style={{
-                                              verticalAlign: 'top', paddingTop: '9px !important' as any,
-                                              borderLeft: `3px solid ${accent}`,
-                                              borderRight: '1px solid var(--border)',
-                                            }}>
-                                            <div style={{ fontWeight: 700, fontSize: '0.78rem', color: 'var(--text-primary)', lineHeight: 1.3 }}>
-                                              {mission.cityName}
-                                            </div>
-                                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                                              {mission.rows.length} link
-                                            </div>
-                                          </td>
-                                        )}
-                                        <td style={{ textAlign: 'center' }}>
-                                          {durumBadge(ev)}
-                                        </td>
-                                        <td>
-                                          <span style={ifaceBadgeStyle(ev.interfaceType)}>
-                                            {ev.interfaceType}
-                                          </span>
-                                        </td>
-                                        {([ev.down1d, ev.down7d, ev.down30d] as number[]).map((n, ci) => (
-                                          <td key={ci} style={{ textAlign: 'center' }}>
-                                            {n > 0 ? (
-                                              <span style={{
-                                                display: 'inline-block', minWidth: 32, padding: '1px 7px',
-                                                borderRadius: 99, fontWeight: 700,
-                                                color: downColor(n), background: downBg(n),
-                                                fontSize: '0.71rem',
-                                                border: `1px solid ${downColor(n)}40`,
-                                              }}>{n}</span>
-                                            ) : (
-                                              <span style={{ color: 'rgba(255,255,255,0.18)', fontSize: '0.7rem' }}>—</span>
-                                            )}
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    ));
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()}
+                  {/* ── SDWAN Link Kararlılığı ── */}
+                  <SdwanLinkStability linkDownEvents={sdwanStability.linkDownEvents ?? []} />
                 </>
               );
             })()}

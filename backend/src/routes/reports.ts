@@ -444,7 +444,7 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
         ),
         latest AS (
           SELECT DISTINCT ON (CityID, Interface)
-            CityID, Interface, NewState
+            CityID, Interface, NewState, EventAt AS last_event_at
           FROM SdwanLinkEvents
           ORDER BY CityID, Interface, EventAt DESC
         )
@@ -455,7 +455,9 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
           COUNT(t.*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '1 day')   AS down_1d,
           COUNT(t.*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '7 days')  AS down_7d,
           COUNT(t.*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '30 days') AS down_30d,
-          MAX(l.NewState) AS current_state,
+          -- Son event 2 saatten eskiyse stale say → null döndür
+          CASE WHEN MAX(l.last_event_at) < NOW() - INTERVAL '2 hours' THEN NULL
+               ELSE MAX(l.NewState) END AS current_state,
           BOOL_OR(s.ActiveInterface = m.InterfaceName) AS is_active_member,
           BOOL_OR(s.ActiveInterface IS NOT NULL AND s.ActiveInterface != '') AS has_sdwan_status
         FROM SdwanMembers m

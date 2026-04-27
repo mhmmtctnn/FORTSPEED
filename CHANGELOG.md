@@ -4,6 +4,21 @@ All notable changes to FORTSPEED are documented here.
 
 ---
 
+## [v1.19.0] — 2026-04-27
+
+### SdwanLinkStability Bileşen Ayrımı ve Stale State Mantığı
+
+#### Frontend — Reports.tsx Refactor
+- **`<SdwanLinkStability>` bileşeni**: Link-Down Events kartının tamamı ayrı bir alt bileşen olarak çıkarıldı; `Reports.tsx` artık tek satır `<SdwanLinkStability linkDownEvents={...}/>` çağrısıyla render yapıyor (~180 satır inline JSX kaldırıldı)
+- `ifaceBadgeStyle`, `durumBadge`, `downColor`, `downBg`, `groupAccents`, `chipStyle` yardımcı fonksiyonlarının tamamı bileşen scope'una taşındı — daha iyi izolasyon
+- Bakım kolaylığı arttı; ileride standalone kullanım veya lazy-loading için zemin hazırlandı
+
+#### Backend — reports.ts
+- **Stale durum tespiti**: Son link-state olayı 2 saatten eskiyse `current_state` artık `NULL` döndürüyor (`last_event_at < NOW() - INTERVAL '2 hours'`). İzleme kesintisi sırasında eski UP/DOWN badge'lerinin operatörleri yanıltması engelleniyor
+- `latest` CTE'ye `EventAt AS last_event_at` eklendi — tazelik kontrolü bu alan üzerinden yapılıyor
+
+---
+
 ## [v1.18.0] — 2026-04-27
 
 ### SDWAN Stabilite UX Revamp: SdwanMembers Kaynaklı Tablo, durumBadge, WebSocket Canlı Yenileme

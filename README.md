@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.18.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.18.0)
+[![Version](https://img.shields.io/badge/version-1.19.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.19.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -278,6 +278,21 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.19.0 — 2026-04-27
+
+**`SdwanLinkStability` Component Extract & Stale State Logic**
+
+#### 🧹 Frontend — Reports.tsx Refactor
+- **`<SdwanLinkStability>` component**: the entire Link-Down Events card extracted into a dedicated sub-component; `Reports.tsx` now renders it with a single `<SdwanLinkStability linkDownEvents={...}/>` call, removing ~180 lines of inline JSX
+- Encapsulates all helper functions (`ifaceBadgeStyle`, `durumBadge`, `downColor`, `downBg`, `groupAccents`, `chipStyle`) inside the component scope for better isolation
+- Improves maintainability and sets up SdwanLinkStability for future standalone usage or lazy-loading
+
+#### 🔧 Backend — reports.ts
+- **Stale state detection**: `current_state` now returns `NULL` when the latest link-state event is older than 2 hours (`last_event_at < NOW() - INTERVAL '2 hours'`), preventing stale UP/DOWN badges from misleading operators during monitoring gaps
+- `latest` CTE extended with `EventAt AS last_event_at` to support the staleness check
+
+---
 
 ### v1.18.0 — 2026-04-27
 
