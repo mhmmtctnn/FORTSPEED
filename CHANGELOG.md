@@ -4,6 +4,66 @@ All notable changes to FORTSPEED are documented here.
 
 ---
 
+## [v1.17.0] — 2026-04-27
+
+### SDWAN Stabilite — Per-Interface Link-Down Tablosu & State Badge'leri
+
+#### Frontend — Reports.tsx
+- **Per-interface satır gruplaması**: Link-Down Events tablosu artık her `(şehir, interface)` çifti için ayrı satır üretiyor; şehir adı `rowSpan` ile karşı interface satırlarını kapsıyor
+- **Üç zaman penceresi**: Her interface için **Bugün (1d)**, **7 Gün**, **30 Gün** down sayısı ayrı sütunlarda; yalnızca `alive → dead` geçişleri sayılıyor
+- **Durum badge'i**: Her interface için 🟢 **UP** (aktif SDWAN üyesi) / 🔵 **YEDEK** (alive ama aktif değil) / 🔴 **DOWN** (mevcut durum = dead) üç kademeli badge
+- **Renk kodlu sayaç chiplar**: Down count ≥3 → kırmızı, 1-2 → amber, 0 → nötr
+- **Interface tipi pill'i**: GSM=yeşil, METRO=mavi, HUB=amber ve diğer interface tipleri için renk kodlu `ifaceBadgeStyle()` helper
+- **Özet header**: Etkilenen benzersiz şehir sayısı ve bugünün toplam down-event sayısı kart başlığında gösteriliyor
+- **Kaydırmalı tablo**: `maxHeight: 420px` + `overflowY: auto` sınırlı yükseklikli kayan tablo; `position: sticky` thead
+
+#### Backend — reports.ts
+- **CTE tabanlı geçiş sayımı**: `WITH transitions AS (LAG(NewState) OVER (PARTITION BY CityID, Interface ORDER BY EventAt))` — sadece gerçek durum geçişleri sayılıyor, yinelenen olaylar gürültü oluşturmuyor
+- **`latest` CTE**: `DISTINCT ON (CityID, Interface)` ile her interface'in güncel durumu tek sorguda alınıyor
+- **`SdwanStatus` JOIN**: `BOOL_OR(s.ActiveInterface = t.Interface)` ile interface'in aktif SDWAN üyesi olup olmadığı hesaplanıyor
+- **Filtre uyumluluğu**: Kontinent / ülke / şehir parametreleri yeni CTE yapısına uyarlandı; `$1 periodDays` parametresi kaldırıldı (sabit 30 günlük pencere)
+- **`periodDays` genişletmesi**: `/api/reports/sdwan-stability/timeseries` endpoint'i artık `1d` periyodunu da destekliyor
+
+#### Backend — webhook.ts
+- **`::varchar` type cast tutarlılığı**: `sdwan_members`, `sdwan_status` ve `sdwan_combined` yollarındaki tüm `SdwanHistory INSERT` sorgularında `::text` → `::varchar` dönüştürüldü
+- **`NOT EXISTS` dedup guard**: Eşleşen `::varchar` cast'leri ile örtük tür dönüşümü kaynaklı yanlış eşleşmeler önlendi
+
+---
+
+## [v1.16.0] — 2026-04-24
+
+### SDWAN Link-State Event Alımı, Dedup Düzeltmeleri, Reports Link-Down Tablosu
+
+#### Backend — webhook-parser.ts
+- **`parseSdwanLinkState()`** yeni parser fonksiyonu: FortiGate `logid="0113022933"` loglarını işler
+- SLA formatı (`status=up|down`) ve Health Check formatı (`oldvalue/newvalue=alive|dead`) destekleniyor
+- Cihaz adı CLI başlık satırından çıkarılıyor (`CIHAZ_ADI  execute log filter ...`)
+- `detectPayloadType()` — `sdwan_linkstate` tip tespiti eklendi
+
+#### Backend — webhook.ts
+- **SDWAN link-state ingestion**: `SdwanLinkEvents` tablosuna yazma, 30 saniyelik `NOT EXISTS` dedup penceresi
+- **Redis WebSocket push**: Link-state olayları `speedtest_updates` kanalına `type: 'sdwan_linkstate'` olarak yayınlanıyor
+- **Webhook ring buffer**: SDWAN payloadları `/webhook/last` ring buffer'ından ve günlük sayaç sorgularından hariç tutuldu (NOC log viewer yalnızca hız testi girişlerini gösteriyor)
+- **Duplicate interface fix**: Gereksiz `prevInterface !== activeInterface` çift kontrolü kaldırıldı
+
+#### Database
+- `09_sdwan_linkevents.sql`: Yeni `SdwanLinkEvents` tablosu oluşturuldu (`CityID`, `Interface`, `OldState`, `NewState`, `EventAt`); `CityID + EventAt` üzerinde indexler
+
+#### Backend — reports.ts
+- `/reports/sdwan` endpoint'i `linkDownEvents` veri setini döndürüyor: şehir başına down count, up count, interface count ve son olay
+
+---
+
+## [v1.15.0] — 2026-04-24
+
+### MapView Grafik Y-Ekseni Dinamik Ölçekleme ve Layout Overflow Düzeltmesi
+
+#### Frontend — MapView.tsx
+- **Dinamik Y-ekseni üst sınırı**: `chartYMax` hesaplaması max değerin %20 üstünü alıp büyüklük katsayısına göre yukarı yuvarlıyor — veriler artık cliplanmıyor veya çok geniş eksene sıkışmıyor
+- **Sidebar overflow fix**: İstatistik paneli flex container'ına `minHeight: 0` eklendi; grafik wrapper `position: absolute` + sabit `170px` yükseklik ile doğru render ediliyor
+
+---
+
 ## [v1.14.0] — 2026-04-21
 
 ### Payload Zaman Damgası, SDWAN & LogViewer Doğru Zaman, MapView Grafik Düzeltmesi

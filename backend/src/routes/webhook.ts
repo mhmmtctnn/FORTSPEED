@@ -121,13 +121,13 @@ export async function registerWebhookRoutes(
           if (prevInterface !== activeInterface && activeInterface !== null) {
             await fastify.pg.query(
               `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID)
-               SELECT $1, $2, $3, $4
-               WHERE COALESCE($2::text, '') <> $3
+               SELECT $1, $2::varchar, $3::varchar, $4
+               WHERE COALESCE($2::varchar, '') <> $3::varchar
                  AND NOT EXISTS (
                    SELECT 1 FROM SdwanHistory
                    WHERE CityID = $1
-                     AND COALESCE(FromInterface, '') = COALESCE($2::text, '')
-                     AND ToInterface = $3
+                     AND COALESCE(FromInterface, '') = COALESCE($2::varchar, '')
+                     AND ToInterface = $3::varchar
                      AND RecordedAt > NOW() - INTERVAL '2 minutes'
                  )`,
               [cityId, prevInterface, activeInterface, activeMemberSeq]
@@ -189,13 +189,13 @@ export async function registerWebhookRoutes(
           if (prevInterface !== activeInterface && activeInterface !== null) {
             await fastify.pg.query(
               `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID)
-               SELECT $1, $2, $3, $4
-               WHERE COALESCE($2::text, '') <> $3
+               SELECT $1, $2::varchar, $3::varchar, $4
+               WHERE COALESCE($2::varchar, '') <> $3::varchar
                  AND NOT EXISTS (
                    SELECT 1 FROM SdwanHistory
                    WHERE CityID = $1
-                     AND COALESCE(FromInterface, '') = COALESCE($2::text, '')
-                     AND ToInterface = $3
+                     AND COALESCE(FromInterface, '') = COALESCE($2::varchar, '')
+                     AND ToInterface = $3::varchar
                      AND RecordedAt > NOW() - INTERVAL '2 minutes'
                  )`,
               [cityId, prevInterface, activeInterface, activeMemberSeq]
@@ -301,13 +301,13 @@ export async function registerWebhookRoutes(
         if (prevInterface2 !== activeInterface && activeInterface !== null) {
           await fastify.pg.query(
             `INSERT INTO SdwanHistory (CityID, FromInterface, ToInterface, ActiveSeqID)
-             SELECT $1, $2, $3, $4
-             WHERE COALESCE($2::text, '') <> $3
+             SELECT $1, $2::varchar, $3::varchar, $4
+             WHERE COALESCE($2::varchar, '') <> $3::varchar
                AND NOT EXISTS (
                  SELECT 1 FROM SdwanHistory
                  WHERE CityID = $1
-                   AND COALESCE(FromInterface, '') = COALESCE($2::text, '')
-                   AND ToInterface = $3
+                   AND COALESCE(FromInterface, '') = COALESCE($2::varchar, '')
+                   AND ToInterface = $3::varchar
                    AND RecordedAt > NOW() - INTERVAL '2 minutes'
                )`,
             [cityId, prevInterface2, activeInterface, activeMemberSeq]

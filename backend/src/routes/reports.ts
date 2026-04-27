@@ -432,20 +432,42 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
       });
 
       const { rows: linkRows } = await fastify.pg.query(`
-        SELECT c.CityID, c.CityName AS city_name,
-          COUNT(*) FILTER (WHERE e.NewState = 'dead')  AS down_count,
-          COUNT(*) FILTER (WHERE e.NewState = 'alive') AS up_count,
-          COUNT(DISTINCT e.Interface)                  AS interface_count,
-          MAX(e.EventAt) AS last_event
-        FROM SdwanLinkEvents e
-        JOIN Cities c ON c.CityID = e.CityID
-        WHERE e.EventAt >= NOW() - ($1 || ' days')::interval
-          AND ($2::text IS NULL OR c.KITA = $2)
-          AND ($3::text IS NULL OR c.ULKE = $3)
-          AND ($4::int  IS NULL OR e.CityID = $4)
-        GROUP BY c.CityID, c.CityName
-        ORDER BY down_count DESC
-      `, [periodDays, continent || null, country || null, cityId ? Number(cityId) : null]);
+        WITH transitions AS (
+          SELECT
+            e.CityID,
+            e.Interface,
+            e.NewState,
+            e.EventAt,
+            LAG(e.NewState) OVER (PARTITION BY e.CityID, e.Interface ORDER BY e.EventAt) AS prev_state
+          FROM SdwanLinkEvents e
+          WHERE e.EventAt >= NOW() - INTERVAL '31 days'
+        ),
+        latest AS (
+          SELECT DISTINCT ON (CityID, Interface)
+            CityID, Interface, NewState
+          FROM SdwanLinkEvents
+          ORDER BY CityID, Interface, EventAt DESC
+        )
+        SELECT
+          c.CityID,
+          c.CityName AS city_name,
+          t.Interface AS interface_type,
+          COUNT(*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '1 day')   AS down_1d,
+          COUNT(*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '7 days')  AS down_7d,
+          COUNT(*) FILTER (WHERE t.NewState = 'dead' AND t.prev_state = 'alive' AND t.EventAt >= NOW() - INTERVAL '30 days') AS down_30d,
+          MAX(l.NewState) AS current_state,
+          BOOL_OR(s.ActiveInterface = t.Interface) AS is_active_member
+        FROM transitions t
+        JOIN Cities c ON c.CityID = t.CityID
+        LEFT JOIN latest l ON l.CityID = t.CityID AND l.Interface = t.Interface
+        LEFT JOIN SdwanStatus s ON s.CityID = t.CityID
+        WHERE t.EventAt >= NOW() - INTERVAL '30 days'
+          AND ($1::text IS NULL OR c.KITA = $1)
+          AND ($2::text IS NULL OR c.ULKE = $2)
+          AND ($3::int  IS NULL OR t.CityID = $3)
+        GROUP BY c.CityID, c.CityName, t.Interface
+        ORDER BY c.CityName, t.Interface
+      `, [continent || null, country || null, cityId ? Number(cityId) : null]);
 
       return reply.send({
         summary: {
@@ -465,10 +487,12 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
         linkDownEvents: linkRows.map((r: any) => ({
           cityId:         Number(r.cityid),
           cityName:       r.city_name,
-          downCount:      Number(r.down_count),
-          upCount:        Number(r.up_count),
-          interfaceCount: Number(r.interface_count),
-          lastEvent:      r.last_event,
+          interfaceType:  r.interface_type,
+          down1d:         Number(r.down_1d),
+          down7d:         Number(r.down_7d),
+          down30d:        Number(r.down_30d),
+          currentState:   r.current_state ?? null,
+          isActiveMember: r.is_active_member === true,
         })),
       });
     } catch (err) {
@@ -479,7 +503,7 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
 
   fastify.get('/api/reports/sdwan-stability/timeseries', async (request, reply) => {
     const { period, cityId } = request.query as { period?: string; cityId?: string };
-    const periodDays = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+    const periodDays = period === '7d' ? 7 : period === '1d' ? 1 : period === '90d' ? 90 : 30;
 
     try {
       const { rows } = await fastify.pg.query(`

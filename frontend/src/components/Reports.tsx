@@ -1353,58 +1353,134 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
                     </div>
                   )}
                   {/* ── Link Durum Olayları ── */}
-                  <div className="glass-card" style={{ marginTop: 16, overflow: 'hidden' }}>
-                    <div style={{ padding: '12px 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>Link Durum Olayları</span>
-                      {(sdwanStability.linkDownEvents ?? []).length > 0 && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {(sdwanStability.linkDownEvents ?? []).length} misyon · Toplam{' '}
-                          <strong style={{ color: '#ef4444' }}>{(sdwanStability.linkDownEvents ?? []).reduce((s: number, e: any) => s + e.downCount, 0)}</strong> down,{' '}
-                          <strong style={{ color: '#22c55e' }}>{(sdwanStability.linkDownEvents ?? []).reduce((s: number, e: any) => s + e.upCount, 0)}</strong> up
-                        </span>
-                      )}
-                    </div>
-                    {(sdwanStability.linkDownEvents ?? []).length === 0 ? (
-                      <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                        Henüz link durum olayı yok
+                  {(() => {
+                    const allEvents: any[] = sdwanStability.linkDownEvents ?? [];
+                    const missionMap = new Map<number, { cityName: string; rows: any[] }>();
+                    for (const ev of allEvents) {
+                      if (!missionMap.has(ev.cityId)) missionMap.set(ev.cityId, { cityName: ev.cityName, rows: [] });
+                      missionMap.get(ev.cityId)!.rows.push(ev);
+                    }
+                    const missions = [...missionMap.values()].sort((a, b) => {
+                      const aMax = Math.max(...a.rows.map((r: any) => r.down1d));
+                      const bMax = Math.max(...b.rows.map((r: any) => r.down1d));
+                      return bMax - aMax;
+                    });
+
+                    const totalDown1d = allEvents.reduce((s, e) => s + e.down1d, 0);
+                    const affectedMissions = missions.filter(m => m.rows.some((r: any) => r.down1d > 0)).length;
+
+                    const downColor = (n: number) =>
+                      n === 0 ? 'var(--text-muted)' : n < 10 ? '#f59e0b' : '#ef4444';
+                    const downBg = (n: number) =>
+                      n === 0 ? 'transparent' : n < 10 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
+
+                    const ifaceBadgeStyle = (type: string, alive: boolean): React.CSSProperties => {
+                      const t = type.toUpperCase();
+                      const baseColor = t.includes('GSM') ? '#38bdf8' : t.includes('METRO') ? '#a78bfa' : t.includes('HUB') ? '#fb923c' : '#94a3b8';
+                      return {
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: '2px 8px', borderRadius: 99, fontSize: '0.7rem', fontWeight: 700,
+                        background: `${baseColor}18`, color: baseColor,
+                        border: `1px solid ${baseColor}33`,
+                      };
+                    };
+
+                    return (
+                      <div className="glass-card" style={{ marginTop: 16, overflow: 'hidden' }}>
+                        {/* Header */}
+                        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 3, height: 16, borderRadius: 99, background: 'var(--accent)' }}/>
+                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                              Link Durum Olayları
+                            </span>
+                          </div>
+                          {missions.length > 0 && (
+                            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                <span style={{ color: '#ef4444', fontWeight: 700 }}>{affectedMissions}</span> etkilenen misyon
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                Bugün <span style={{ color: '#ef4444', fontWeight: 700 }}>{totalDown1d}</span> down
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {missions.length === 0 ? (
+                          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                            Henüz link durum olayı yok
+                          </div>
+                        ) : (
+                          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                          <table className="data-table" style={{ fontSize: '0.77rem' }}>
+                            <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                              <tr>
+                                <th style={{ width: 28 }}>#</th>
+                                <th>Misyon</th>
+                                <th>Link Tipi</th>
+                                <th style={{ textAlign: 'center', width: 72 }}>Bugün</th>
+                                <th style={{ textAlign: 'center', width: 72 }}>7 Gün</th>
+                                <th style={{ textAlign: 'center', width: 72 }}>30 Gün</th>
+                                <th style={{ textAlign: 'center', width: 64 }}>Durum</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {missions.map((mission, mi) =>
+                                mission.rows.map((ev: any, ri: number) => {
+                                  const isAlive = ev.currentState === 'alive';
+                                  return (
+                                    <tr key={`${ev.cityId}-${ev.interfaceType}`}
+                                      style={{ borderTop: ri === 0 && mi > 0 ? '1px solid var(--border)' : undefined }}>
+                                      {ri === 0 && (
+                                        <td rowSpan={mission.rows.length}
+                                          style={{ color: 'var(--text-muted)', fontWeight: 600, verticalAlign: 'middle', textAlign: 'center', width: 28 }}>
+                                          {mi + 1}
+                                        </td>
+                                      )}
+                                      {ri === 0 && (
+                                        <td rowSpan={mission.rows.length}
+                                          style={{ fontWeight: 700, color: 'var(--text-primary)', verticalAlign: 'middle', borderRight: '1px solid var(--border)' }}>
+                                          {mission.cityName}
+                                        </td>
+                                      )}
+                                      <td style={{ paddingLeft: 14 }}>
+                                        <span style={ifaceBadgeStyle(ev.interfaceType, isAlive)}>
+                                          {ev.interfaceType}
+                                        </span>
+                                      </td>
+                                      {([ev.down1d, ev.down7d, ev.down30d] as number[]).map((n, ci) => (
+                                        <td key={ci} style={{ textAlign: 'center' }}>
+                                          <span style={{
+                                            display: 'inline-block', minWidth: 32, padding: '1px 6px',
+                                            borderRadius: 4, fontWeight: n > 0 ? 700 : 400,
+                                            color: downColor(n), background: downBg(n),
+                                            fontSize: '0.75rem',
+                                          }}>{n}</span>
+                                        </td>
+                                      ))}
+                                      <td style={{ textAlign: 'center' }}>
+                                        {ev.isActiveMember
+                                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, color: '#22c55e' }}>
+                                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 5px #22c55e' }}/>UP</span>
+                                          : isAlive
+                                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, color: '#38bdf8' }}>
+                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', boxShadow: '0 0 5px #38bdf8' }}/>YEDEK</span>
+                                            : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, color: '#ef4444' }}>
+                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 5px #ef4444' }}/>DOWN</span>
+                                        }
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <table className="data-table" style={{ fontSize: '0.78rem' }}>
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Misyon</th>
-                            <th style={{ textAlign: 'center' }}>↓ Down</th>
-                            <th style={{ textAlign: 'center' }}>↑ Up</th>
-                            <th style={{ textAlign: 'center' }}>Link</th>
-                            <th>Son Olay</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(sdwanStability.linkDownEvents ?? []).map((ev: any, i: number) => (
-                            <tr key={i}>
-                              <td style={{ color: 'var(--text-muted)', width: 28 }}>{i + 1}</td>
-                              <td style={{ fontWeight: 500 }}>{ev.cityName}</td>
-                              <td style={{ textAlign: 'center' }}>
-                                {ev.downCount > 0
-                                  ? <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', borderRadius: 4, padding: '2px 8px', fontWeight: 700 }}>{ev.downCount}</span>
-                                  : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                              </td>
-                              <td style={{ textAlign: 'center' }}>
-                                {ev.upCount > 0
-                                  ? <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', borderRadius: 4, padding: '2px 8px', fontWeight: 700 }}>{ev.upCount}</span>
-                                  : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                              </td>
-                              <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{ev.interfaceCount}</td>
-                              <td style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                                {ev.lastEvent ? new Date(ev.lastEvent).toLocaleString('tr-TR') : '—'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </>
               );
             })()}

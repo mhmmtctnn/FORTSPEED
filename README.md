@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.12.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.12.0)
+[![Version](https://img.shields.io/badge/version-1.17.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.17.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -38,6 +38,8 @@
 - 🌐 **Full i18n / Multi-language** — All UI strings externalised; dynamic locale propagation to date/time formatters across all components
 - 🔐 **Auth Manager** — Admin settings panel for switching between Local, LDAP and Keycloak authentication with live connection test
 - 📍 **4-Tier Map Arc Colours** — No-data missions now rendered in grey; arcs accurately reflect data availability alongside speed quality
+- 📡 **SDWAN Link-State Monitoring** — FortiGate SLA health-check logs ingested in real-time; per-interface UP/DOWN state tracked and persisted with 30s dedup window
+- 📊 **SDWAN Stability Report** — Per-city, per-interface link-down counts for 1d/7d/30d time windows with current state (UP / YEDEK / DOWN) badges and active-member detection
 
 ---
 
@@ -108,6 +110,7 @@ Three-period toggle (Last 24h / 7 Days / 30 Days) featuring:
 | **Kıta** | Continent comparison with top-10 leaders |
 | **Hat Tipi** | GSM vs Metro head-to-head with daily/weekly/monthly Sparklines |
 | **Tüm Kayıtlar** | Raw speed test records with full filtering |
+| **SDWAN Stabilite** | Per-interface link-down event counts (1d/7d/30d) with UP/YEDEK/DOWN state badges |
 
 ### 📋 Webhook Log Viewer
 Real-time inspection of incoming FortiGate webhooks:
@@ -275,6 +278,26 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.17.0 — 2026-04-27
+
+**SDWAN Link-State Stability Report: Per-Interface Down Count & State Badges**
+
+#### 📊 Reports — SDWAN Stabilite (Link-State)
+- **Per-interface breakdown**: Link-Down Events table now groups by `(city, interface)` — each interface (GSM, METRO, HUB…) appears as its own row with city name spanning across rows
+- **Multi-window down counts**: Separate columns for **Bugün (1d)**, **7 Gün**, **30 Gün** showing only transitions from `alive → dead` (not raw event counts) using `LAG()` window function
+- **Current state badge**: Three-tier badge per interface — 🟢 **UP** (active SDWAN member), 🔵 **YEDEK** (alive but not active), 🔴 **DOWN** (current state = dead)
+- **Color-coded count chips**: Down count chips turn red (≥3), amber (1–2), or neutral (0) for fast visual triage
+- **Interface type badge**: Each interface name styled with color-coded pill (GSM=green, METRO=blue, HUB=amber, etc.)
+- **31-day rolling CTE**: Backend query uses `WITH transitions AS (LAG ... OVER PARTITION BY CityID, Interface ORDER BY EventAt)` — only genuine state transitions counted, eliminates duplicate event noise
+- **`periodDays` extended**: `/api/reports/sdwan-stability/timeseries` now accepts `1d` in addition to `7d / 30d / 90d`
+- **Summary header**: Card shows total unique cities affected and today's total down-event count
+
+#### 🔧 Backend — SdwanHistory Type Cast Fix
+- All three SDWAN history INSERT paths (`sdwan_members`, `sdwan_status`, `sdwan_combined`) now cast params with `::varchar` instead of `::text` for PostgreSQL type consistency
+- `NOT EXISTS` dedup guard updated with matching `::varchar` casts to prevent implicit cast mismatches
+
+---
 
 ### v1.12.0 — 2026-04-20
 
