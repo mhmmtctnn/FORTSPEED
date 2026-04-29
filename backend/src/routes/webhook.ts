@@ -88,13 +88,13 @@ export async function registerWebhookRoutes(
           return reply.status(400).send({ status: 'UNKNOWN_DEVICE', device: deviceName });
         }
 
-        for (const m of members) {
+        if (members.length > 0) {
+          const vals = members.map((_, i) => `($${i*4+1}, $${i*4+2}, $${i*4+3}, $${i*4+4}, NOW())`).join(',');
           await fastify.pg.query(
-            `INSERT INTO SdwanMembers (CityID, SeqID, InterfaceName, Cost, UpdatedAt)
-             VALUES ($1, $2, $3, $4, NOW())
+            `INSERT INTO SdwanMembers (CityID, SeqID, InterfaceName, Cost, UpdatedAt) VALUES ${vals}
              ON CONFLICT (CityID, SeqID) DO UPDATE
                SET InterfaceName = EXCLUDED.InterfaceName, Cost = EXCLUDED.Cost, UpdatedAt = NOW()`,
-            [cityId, m.seqId, m.interfaceName, m.cost]
+            members.flatMap(m => [cityId, m.seqId, m.interfaceName, m.cost])
           );
         }
 
@@ -162,13 +162,13 @@ export async function registerWebhookRoutes(
           fastify.log.warn(`SDWAN JSON UNKNOWN_DEVICE: ${deviceName}`);
           return reply.status(400).send({ status: 'UNKNOWN_DEVICE', device: deviceName });
         }
-        for (const m of members) {
+        if (members.length > 0) {
+          const vals = members.map((_, i) => `($${i*4+1}, $${i*4+2}, $${i*4+3}, $${i*4+4}, NOW())`).join(',');
           await fastify.pg.query(
-            `INSERT INTO SdwanMembers (CityID, SeqID, InterfaceName, Cost, UpdatedAt)
-             VALUES ($1, $2, $3, $4, NOW())
+            `INSERT INTO SdwanMembers (CityID, SeqID, InterfaceName, Cost, UpdatedAt) VALUES ${vals}
              ON CONFLICT (CityID, SeqID) DO UPDATE
                SET InterfaceName = EXCLUDED.InterfaceName, Cost = EXCLUDED.Cost, UpdatedAt = NOW()`,
-            [cityId, m.seqId, m.interfaceName, m.cost]
+            members.flatMap(m => [cityId, m.seqId, m.interfaceName, m.cost])
           );
         }
         let activeInterface: string | null = null;
@@ -231,15 +231,13 @@ export async function registerWebhookRoutes(
           fastify.log.warn(`SDWAN members UNKNOWN_DEVICE: ${deviceName}`);
           return reply.status(400).send({ status: 'UNKNOWN_DEVICE', device: deviceName });
         }
-        for (const m of members) {
+        if (members.length > 0) {
+          const vals = members.map((_, i) => `($${i*4+1}, $${i*4+2}, $${i*4+3}, $${i*4+4}, NOW())`).join(',');
           await fastify.pg.query(
-            `INSERT INTO SdwanMembers (CityID, SeqID, InterfaceName, Cost, UpdatedAt)
-             VALUES ($1, $2, $3, $4, NOW())
+            `INSERT INTO SdwanMembers (CityID, SeqID, InterfaceName, Cost, UpdatedAt) VALUES ${vals}
              ON CONFLICT (CityID, SeqID) DO UPDATE
-               SET InterfaceName = EXCLUDED.InterfaceName,
-                   Cost = EXCLUDED.Cost,
-                   UpdatedAt = NOW()`,
-            [cityId, m.seqId, m.interfaceName, m.cost]
+               SET InterfaceName = EXCLUDED.InterfaceName, Cost = EXCLUDED.Cost, UpdatedAt = NOW()`,
+            members.flatMap(m => [cityId, m.seqId, m.interfaceName, m.cost])
           );
         }
         fastify.log.info(`SDWAN members güncellendi: ${deviceName} → ${members.length} üye`);

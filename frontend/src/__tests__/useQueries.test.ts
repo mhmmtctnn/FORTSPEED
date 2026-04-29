@@ -25,6 +25,8 @@ describe('useQueries — Export Kontrolü', () => {
       'useSparklines',
       'useNocSummary',
       'useCityMutations',
+      'useSdwanStability',
+      'useSdwanTimeseries',
     ];
 
     for (const name of EXPECTED_EXPORTS) {
@@ -191,5 +193,15 @@ describe('useQueries — Cache Stratejisi', () => {
     queryKeys.forEach(key => {
       expect(sourceCode).toContain(key);
     });
+  });
+
+  it('useSdwanTimeseries arka plan yenileme sırasında önceki veriyi korumak için placeholderData içermeli', () => {
+    expect(sourceCode).toContain('useSdwanTimeseries');
+    expect(sourceCode).toMatch(/useSdwanTimeseries[\s\S]*?placeholderData/);
+  });
+
+  it('useSdwanStability arka plan yenileme sırasında önceki veriyi korumak için placeholderData içermeli', () => {
+    expect(sourceCode).toContain('useSdwanStability');
+    expect(sourceCode).toMatch(/useSdwanStability[\s\S]*?placeholderData/);
   });
 });

@@ -115,6 +115,7 @@ export const useSdwanStability = (period: '1d' | '7d' | '30d' | '90d', continent
       return (await axios.get(`${API_BASE}/reports/sdwan-stability?${params}`)).data;
     },
     staleTime: 60_000,
+    placeholderData: (prev: unknown) => prev,
   });
 
 export const useSdwanTimeseries = (period: '1d' | '7d' | '30d' | '90d', cityId: number | null) =>
@@ -123,6 +124,7 @@ export const useSdwanTimeseries = (period: '1d' | '7d' | '30d' | '90d', cityId: 
     queryFn: async () => (await axios.get(`${API_BASE}/reports/sdwan-stability/timeseries?period=${period}&cityId=${cityId}`)).data,
     enabled: cityId !== null,
     staleTime: 60_000,
+    placeholderData: (prev: unknown) => prev,
   });
 
 // 3. Misyon Yönetimi Mutasyonları

@@ -82,8 +82,7 @@ const knownDeviceMembers = () => {
   mockQuery
     .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })  // INSERT WebhookLogs
     .mockResolvedValueOnce({ rows: [{ cityid: 42 }] })         // findCityId SELECT
-    .mockResolvedValueOnce({ rows: [] })                        // INSERT SdwanMembers (member 1)
-    .mockResolvedValueOnce({ rows: [] });                       // INSERT SdwanMembers (member 2)
+    .mockResolvedValueOnce({ rows: [] });                       // INSERT SdwanMembers (toplu — 1 sorgu)
 };
 
 const knownDeviceStatusOnly = () => {
@@ -165,6 +164,33 @@ describe('SDWAN Webhook Routes', () => {
         'speedtest_updates',
         expect.stringContaining('"type":"sdwan_members"')
       );
+    });
+
+    it('birden fazla üye için tek bir toplu DB sorgusu çalıştırmalı', async () => {
+      const multiMembersBody = [
+        'BERLIN-BK # show system sdwan',
+        'config members',
+        '    edit 1', '        set interface "port1"', '        set cost 10', '    next',
+        '    edit 2', '        set interface "port2"', '        set cost 20', '    next',
+        '    edit 3', '        set interface "port3"', '        set cost 30', '    next',
+        'end',
+      ].join('\n');
+
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ webhooklogid: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ cityid: 42 }] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await app.inject({
+        method: 'POST', url: '/api/webhook',
+        headers: { 'content-type': 'text/plain' },
+        body: multiMembersBody,
+      });
+
+      const memberInsertCalls = mockQuery.mock.calls.filter(args =>
+        typeof args[0] === 'string' && args[0].includes('SdwanMembers')
+      );
+      expect(memberInsertCalls).toHaveLength(1);
     });
   });
 

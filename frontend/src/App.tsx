@@ -66,7 +66,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   const bcp47 = LOCALE_BCP47[locale];
   const [view, setView] = useState<View>('dashboard');
 
-  const NAV = NAV_DEFS.map(n => ({ ...n, label: t(n.key) }));
+  const NAV = useMemo(() => NAV_DEFS.map(n => ({ ...n, label: t(n.key) })), [t]);
   
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     try {
@@ -134,6 +134,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   const reconnectTimer = useRef<number | null>(null);
   const lastInvalidateRef       = useRef<number>(0);
   const lastReportInvalidateRef = useRef<number>(0);
+  const flashTimers = useRef<number[]>([]);
+
+  useEffect(() => {
+    return () => { flashTimers.current.forEach(id => window.clearTimeout(id)); };
+  }, []);
 
   const connectWS = useCallback(() => {
     if (ws.current && ws.current.readyState !== WebSocket.CLOSED) {
@@ -222,7 +227,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       // Harita animasyonu — hız sonucuna göre renklendir, 3s sonra temizle
       const rippleColor = u.download >= 60 ? '#22c55e' : u.download >= 30 ? '#f97316' : '#ef4444';
       setFlashCities(prev => new Map(prev).set(u.cityId, { color: rippleColor, download: u.download }));
-      setTimeout(() => setFlashCities(prev => { const n = new Map(prev); n.delete(u.cityId); return n; }), 3000);
+      flashTimers.current.push(window.setTimeout(() => setFlashCities(prev => { const n = new Map(prev); n.delete(u.cityId); return n; }), 3000));
 
       const vpnKey: VpnTab | null = isGsm ? 'GSM' : isMetro ? 'METRO' : isHub ? 'HUB' : null;
       if (vpnKey) {

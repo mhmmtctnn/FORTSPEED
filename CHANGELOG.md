@@ -4,6 +4,30 @@ All notable changes to FORTSPEED are documented here.
 
 ---
 
+## [v1.20.0] — 2026-04-29
+
+### Redis Cleanup, Batch INSERT Optimizasyonu, Genişletilmiş Test Coverage
+
+#### Backend — app.ts
+- **Redis `onClose` cleanup hook**: `subRedis.unsubscribe()` + `subRedis.quit()` artık Fastify kapanış aşamasında düzgün çağrılıyor; uygulama kapatılırken Redis abonelik resource leak'i önleniyor.
+
+#### Backend — webhook.ts
+- **Batch `SdwanMembers` INSERT**: `for...of` döngüsüyle N ayrı sorgu yerine tek bir parameterized `VALUES ($1,$2,$3,$4), ($5,$6,$7,$8)...` batch INSERT kullanılıyor. Üç webhook yolunda (`sdwan_members`, `sdwan_status`, `sdwan_combined`) uygulandı.
+- Boş üye listesi kontrolü: `for` yerine `if (members.length > 0)` guard — sıfır üyeli payload'larda gereksiz DB turu yapılmıyor.
+- Batch yoğunluğuna göre DB bağlantı süresi belirgin şekilde azaltıldı.
+
+#### Test Coverage Genişletme
+- **`backend/src/__tests__/auth.test.ts`** — Auth route testleri genişletildi; yeni edge-case senaryolar eklendi.
+- **`backend/src/__tests__/webhook-sdwan.test.ts`** — SDWAN webhook testleri genişletildi; batch INSERT davranışı doğrulandı.
+- **`frontend/src/__tests__/App.test.tsx`** — App entegrasyon testleri genişletildi.
+- **`frontend/src/__tests__/Reports.test.tsx`** — Reports bileşen testleri güncellendi.
+- **`frontend/src/__tests__/useQueries.test.ts`** — useQueries hook testleri genişletildi.
+
+#### Frontend — App.tsx / Reports.tsx / useQueries.ts
+- Küçük iyileştirmeler ve kod kalitesi düzeltmeleri.
+
+---
+
 ## [v1.19.0] — 2026-04-27
 
 ### SdwanLinkStability Bileşen Ayrımı ve Stale State Mantığı

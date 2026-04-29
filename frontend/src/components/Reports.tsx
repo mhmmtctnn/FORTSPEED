@@ -472,7 +472,7 @@ export default function Reports({ missions, cityList, filters, filterOptions, su
   const [sdwanTimeseriesCityId, setSdwanTimeseriesCityId] = useState<number|null>(null);
 
   const { data: nocData, isFetching: nocLoading } = useNocSummary(nocPeriod);
-  const { data: sdwanStability, isFetching: sdwanLoading } = useSdwanStability(sdwanPeriod, filters.continent || undefined, filters.country || undefined, filters.missionId || undefined);
+  const { data: sdwanStability, isLoading: sdwanLoading } = useSdwanStability(sdwanPeriod, filters.continent || undefined, filters.country || undefined, filters.missionId || undefined);
   const { data: sdwanTimeseries, isFetching: sdwanTimeseriesLoading } = useSdwanTimeseries(sdwanPeriod, sdwanTimeseriesCityId);
 
   const toggleSort = (col: string) => {

@@ -40,7 +40,9 @@ vi.mock('jspdf', () => ({
 vi.mock('jspdf-autotable', () => ({ default: vi.fn() }));
 
 vi.mock('../hooks/useQueries', () => ({
-  useNocSummary: vi.fn(() => ({ data: null, isFetching: false })),
+  useNocSummary:      vi.fn(() => ({ data: null, isFetching: false })),
+  useSdwanStability:  vi.fn(() => ({ data: null, isLoading: false })),
+  useSdwanTimeseries: vi.fn(() => ({ data: null, isFetching: false })),
 }));
 
 vi.mock('lucide-react', () => ({

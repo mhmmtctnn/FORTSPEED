@@ -86,6 +86,11 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     });
   }
 
+  fastify.addHook('onClose', async () => {
+    try { await subRedis.unsubscribe(); } catch {}
+    try { await subRedis.quit(); } catch {}
+  });
+
   fastify.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => done(null, body));
   fastify.addContentTypeParser('*', { parseAs: 'string' }, (_req, body, done) => done(null, body));
 

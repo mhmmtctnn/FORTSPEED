@@ -77,6 +77,7 @@ vi.mock('../hooks/useQueries', () => ({
   useDashboardData: vi.fn(() => ({ data: null, isFetching: false })),
   useReportsData:   vi.fn(() => ({ data: null, isFetching: false })),
   useSparklines:    vi.fn(() => ({ data: null })),
+  useSdwan:         vi.fn(() => ({ data: [] })),
   useCityMutations: vi.fn(() => ({
     addCity:    { mutateAsync: vi.fn(), mutate: vi.fn() },
     updateCity: { mutateAsync: vi.fn(), mutate: vi.fn() },
@@ -303,5 +304,24 @@ describe('App — localStorage', () => {
   it('bozuk JSON settings ile render çökmemeli', () => {
     localStorageMock.getItem.mockReturnValue('{ invalid json }');
     expect(() => render(<App />)).not.toThrow();
+  });
+});
+
+// ─── Flash City Timeout Temizleme ────────────────────────────────────────────
+
+describe('Flash City Timeout Temizleme', () => {
+  it('bileşen unmount edilince bekleyen zamanlayıcılar temizlenmeli', () => {
+    vi.useFakeTimers();
+    const clearSpy = vi.spyOn(window, 'clearTimeout');
+
+    sessionStorage.setItem('fortspeed_auth', '1');
+    const { unmount } = render(<App />);
+    unmount();
+    sessionStorage.removeItem('fortspeed_auth');
+
+    expect(clearSpy).toHaveBeenCalled();
+
+    vi.useRealTimers();
+    clearSpy.mockRestore();
   });
 });

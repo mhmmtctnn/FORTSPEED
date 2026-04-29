@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.19.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.19.0)
+[![Version](https://img.shields.io/badge/version-1.20.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.20.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -278,6 +278,27 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.20.0 — 2026-04-29
+
+**Redis Cleanup, Batch INSERT Optimization & Expanded Test Coverage**
+
+#### 🔧 Backend — app.ts
+- **Redis `onClose` cleanup**: `subRedis.unsubscribe()` + `subRedis.quit()` now properly called on Fastify shutdown, preventing Redis subscription resource leaks when the application closes.
+
+#### ⚡ Backend — webhook.ts — Batch SdwanMembers INSERT
+- **Batch parameterized INSERT**: instead of `N` individual queries in a `for...of` loop, a single `VALUES ($1,$2,$3,$4), ($5,$6,$7,$8)…` batch INSERT is now used for `SdwanMembers` upserts across all three webhook paths (`sdwan_members`, `sdwan_status`, `sdwan_combined`).
+- **Empty-list guard**: `if (members.length > 0)` replaces the `for` loop guard — no unnecessary DB round-trips for empty member arrays.
+- Measurably reduces DB connection time under high batch throughput.
+
+#### 🧪 Test Coverage Expansion
+- `backend/src/__tests__/auth.test.ts` — additional edge-case scenarios for auth routes
+- `backend/src/__tests__/webhook-sdwan.test.ts` — batch INSERT behavior validated
+- `frontend/src/__tests__/App.test.tsx` — extended integration tests
+- `frontend/src/__tests__/Reports.test.tsx` — updated component tests
+- `frontend/src/__tests__/useQueries.test.ts` — expanded hook tests
+
+---
 
 ### v1.19.0 — 2026-04-27
 

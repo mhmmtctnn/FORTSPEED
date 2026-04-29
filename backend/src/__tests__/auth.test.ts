@@ -6,7 +6,7 @@
  */
 
 import { buildApp } from '../app';
-import { invalidateAuthConfigCache } from '../routes/auth';
+import { invalidateAuthConfigCache, escapeLdapDN } from '../routes/auth';
 import bcrypt from 'bcrypt';
 
 jest.mock('ioredis', () =>
@@ -311,5 +311,29 @@ describe('Auth Routes', () => {
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body).ok).toBe(true);
     });
+  });
+});
+
+describe('escapeLdapDN — LDAP enjeksiyon koruması', () => {
+  it('temiz girdi değişmeden geçmeli', () => {
+    expect(escapeLdapDN('admin')).toBe('admin');
+    expect(escapeLdapDN('user123')).toBe('user123');
+  });
+
+  it('* karakterini escape etmeli', () => {
+    expect(escapeLdapDN('admin*')).toBe('admin\\*');
+  });
+
+  it('parantezleri escape etmeli', () => {
+    expect(escapeLdapDN('a(b)c')).toBe('a\\(b\\)c');
+  });
+
+  it('virgül ve ters eğik çizgiyi escape etmeli', () => {
+    expect(escapeLdapDN('a,b')).toBe('a\\,b');
+    expect(escapeLdapDN('a\\b')).toBe('a\\\\b');
+  });
+
+  it('birden fazla özel karakter içeren girdiyi escape etmeli', () => {
+    expect(escapeLdapDN('admin)(uid=*')).toBe('admin\\)\\(uid=\\*');
   });
 });

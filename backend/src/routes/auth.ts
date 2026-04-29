@@ -82,6 +82,10 @@ function requireLdapjs(): any | null {
   }
 }
 
+export function escapeLdapDN(str: string): string {
+  return str.replace(/[\\,*()\x00]/g, c => '\\' + c);
+}
+
 async function validateLdap(
   cfg: LdapConfig,
   username: string,
@@ -114,7 +118,7 @@ async function validateLdap(
       done({ ok: false, error: e.message || 'LDAP bağlantı hatası' });
     });
 
-    const dn = cfg.bindDNTemplate.replace('{username}', username);
+    const dn = cfg.bindDNTemplate.replace('{username}', escapeLdapDN(username));
     client.bind(dn, password, (err: any) => {
       try { client.destroy(); } catch {}
       done(err ? { ok: false, error: err.message } : { ok: true });
