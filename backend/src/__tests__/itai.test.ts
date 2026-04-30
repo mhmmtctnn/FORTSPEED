@@ -70,7 +70,7 @@ describe('ITAI SSO — Disabled Mode', () => {
     const res = await app.inject({ method: 'GET', url: '/' });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
-    expect(res.body).toContain('FORTSPEED NOC');
+    expect(res.body).toContain('LINKOPS NOC');
   });
 
   it('GET /health returns 200 with itai_mode false', async () => {
@@ -78,7 +78,7 @@ describe('ITAI SSO — Disabled Mode', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.status).toBe('healthy');
-    expect(body.module).toBe('fortspeed-noc');
+    expect(body.module).toBe('linkops-noc');
     expect(body.itai_mode).toBe(false);
   });
 });
@@ -192,7 +192,7 @@ describe('ITAI SSO — Enabled Mode', () => {
     const res = await app.inject({ method: 'GET', url: '/' });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
-    expect(res.body).toContain('FORTSPEED NOC');
+    expect(res.body).toContain('LINKOPS NOC');
   });
 
   it('GET /?itai_token=<valid> sets itaiUser on request', async () => {

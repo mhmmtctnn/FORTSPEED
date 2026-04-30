@@ -314,10 +314,10 @@ describe('Flash City Timeout Temizleme', () => {
     vi.useFakeTimers();
     const clearSpy = vi.spyOn(window, 'clearTimeout');
 
-    sessionStorage.setItem('fortspeed_auth', '1');
+    sessionStorage.setItem('linkops_auth', '1');
     const { unmount } = render(<App />);
     unmount();
-    sessionStorage.removeItem('fortspeed_auth');
+    sessionStorage.removeItem('linkops_auth');
 
     expect(clearSpy).toHaveBeenCalled();
 

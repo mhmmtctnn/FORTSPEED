@@ -13,7 +13,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/fortspeed
+  IMAGE_NAME: ${{ github.repository_owner }}/linkops
 
 jobs:
   lint:
@@ -141,10 +141,10 @@ jobs:
         run: cd frontend && npm run build
 
       - name: Docker build backend
-        run: docker build -t fortspeed-backend:ci ./backend
+        run: docker build -t linkops-backend:ci ./backend
 
       - name: Docker build frontend
-        run: docker build -t fortspeed-frontend:ci ./frontend
+        run: docker build -t linkops-frontend:ci ./frontend
 
       - name: Security audit - root
         run: npm audit --audit-level=high || true
@@ -228,7 +228,7 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.description=FORTSPEED Community Edition (standalone)
+            org.opencontainers.image.description=LINKOPS Community Edition (standalone)
 
       - name: Build and push ITAI edition
         uses: docker/build-push-action@v5
@@ -240,7 +240,7 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.description=FORTSPEED ITAI Edition (Hub integration)
+            org.opencontainers.image.description=LINKOPS ITAI Edition (Hub integration)
 
       - name: Build and push Frontend Community edition
         uses: docker/build-push-action@v5
@@ -252,7 +252,7 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.description=FORTSPEED Frontend Community Edition (standalone)
+            org.opencontainers.image.description=LINKOPS Frontend Community Edition (standalone)
 
       - name: Build and push Frontend ITAI edition
         uses: docker/build-push-action@v5
@@ -264,4 +264,4 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.description=FORTSPEED Frontend ITAI Edition (Hub integration)
+            org.opencontainers.image.description=LINKOPS Frontend ITAI Edition (Hub integration)

@@ -321,7 +321,7 @@ describe('Response Contracts — API Şema Doğrulaması', () => {
       const res = await app.inject({ method: 'GET', url: '/health' });
       const body = JSON.parse(res.body);
       expect(body).toHaveProperty('status', 'healthy');
-      expect(body).toHaveProperty('module', 'fortspeed-noc');
+      expect(body).toHaveProperty('module', 'linkops-noc');
       expect(body).toHaveProperty('itai_mode');
     });
   });

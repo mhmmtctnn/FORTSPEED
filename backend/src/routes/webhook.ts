@@ -135,7 +135,7 @@ export async function registerWebhookRoutes(
           }
         }
 
-        fastify.log.info(`SDWAN combined: ${deviceName} → ${members.length} üye, aktif seq=${activeMemberSeq} (${activeInterface ?? '?'})`);
+        fastify.log.info(`SDWAN combined: ${deviceName} → ${members.length} üye, aktif seq=${activeMemberSeq} (${activeMemberSeq === 0 ? 'aktif üye yok' : activeInterface ?? '?'})`);
 
         await redis.publish('speedtest_updates', JSON.stringify({
           type: 'sdwan_combined', cityId, deviceName, members, activeMemberSeq, activeInterface,
@@ -206,7 +206,7 @@ export async function registerWebhookRoutes(
           type: 'sdwan_combined', cityId, deviceName, members, activeMemberSeq, activeInterface,
           time: new Date().toISOString(),
         }));
-        fastify.log.info(`SDWAN JSON: ${deviceName} → ${members.length} üye, aktif seq=${activeMemberSeq} (${activeInterface ?? '?'})`);
+        fastify.log.info(`SDWAN JSON: ${deviceName} → ${members.length} üye, aktif seq=${activeMemberSeq} (${activeMemberSeq === 0 ? 'aktif üye yok' : activeInterface ?? '?'})`);
         return reply.send({ status: 'OK', type: 'sdwan_json', device: deviceName, members, activeMemberSeq, activeInterface });
       } catch (err) {
         fastify.log.error(err, 'SDWAN JSON DB error');
@@ -311,7 +311,7 @@ export async function registerWebhookRoutes(
             [cityId, prevInterface2, activeInterface, activeMemberSeq]
           );
         }
-        fastify.log.info(`SDWAN status güncellendi: ${deviceName} → seq=${activeMemberSeq} (${activeInterface ?? '?'})`);
+        fastify.log.info(`SDWAN status güncellendi: ${deviceName} → seq=${activeMemberSeq} (${activeMemberSeq === 0 ? 'aktif üye yok' : activeInterface ?? '?'})`);
 
         await redis.publish('speedtest_updates', JSON.stringify({
           type: 'sdwan_status',

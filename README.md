@@ -5,7 +5,7 @@
 **Real-time speed monitoring, NOC analytics, and mission-based network reporting for operations teams.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.20.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.20.0)
+[![Version](https://img.shields.io/badge/version-1.21.0-brightgreen)](https://github.com/mhmmtctnn/FORTSPEED/releases/tag/v1.21.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#-quick-start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
@@ -278,6 +278,32 @@ services:
 ---
 
 ## 📦 Release Notes
+
+### v1.21.0 — 2026-04-30
+
+**LINKOPS Rebranding, SDWAN prev_state Fix & New Favicon**
+
+#### 🏷️ Brand Rename — FORTSPEED → LINKOPS
+- **Page title & meta**: `index.html` updated to `LINKOPS — NOC Dashboard`
+- **Favicon**: New corporate LINKOPS SVG icon
+- **LoginScreen**: Brand name, footer text and `sessionStorage` key renamed (`fortspeed_auth` → `linkops_auth`)
+- **AdminSettings**: Related brand references updated
+- **itai.ts middleware**: `FORTSPEED_API_KEY` → `LINKOPS_API_KEY`; ITAI dashboard title and `/health` module name updated to `linkops-noc`
+- **docker-compose.yml**: Env variable renamed to `LINKOPS_API_KEY`
+- **.env.example**: Updated with `LINKOPS_API_KEY`
+- **translations.ts**: Brand name references updated
+
+#### 🔧 Backend — reports.ts — SDWAN prev_state Fix
+- **`COALESCE(e.OldState, LAG(...))` query fix**: The `prev_state` calculation in the SDWAN stability query now prefers the stored `e.OldState` column value, falling back to `LAG()` window function only when `OldState` is null. This produces more reliable transition counts using directly recorded previous state data.
+
+#### ⚙️ CI/CD
+- **`.github/workflows/ci.yml`**: CI workflow updated and aligned with LINKOPS branding.
+
+#### 🧪 Tests
+- `auth.test.ts`, `itai.test.ts`, `response-contracts.test.ts` — adapted to `LINKOPS_API_KEY` env variable
+- `App.test.tsx` — updated for `linkops_auth` session key
+
+---
 
 ### v1.20.0 — 2026-04-29
 

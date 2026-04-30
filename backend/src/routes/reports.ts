@@ -438,7 +438,7 @@ export async function registerReportRoutes(fastify: FastifyInstance): Promise<vo
             e.Interface,
             e.NewState,
             e.EventAt,
-            LAG(e.NewState) OVER (PARTITION BY e.CityID, e.Interface ORDER BY e.EventAt) AS prev_state
+            COALESCE(e.OldState, LAG(e.NewState) OVER (PARTITION BY e.CityID, e.Interface ORDER BY e.EventAt)) AS prev_state
           FROM SdwanLinkEvents e
           WHERE e.EventAt >= NOW() - INTERVAL '31 days'
         ),

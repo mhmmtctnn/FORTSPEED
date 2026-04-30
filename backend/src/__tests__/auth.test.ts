@@ -165,8 +165,8 @@ describe('Auth Routes', () => {
   // ─── PUT /api/auth/config ──────────────────────────────────────────────────
 
   describe('PUT /api/auth/config', () => {
-    it('FORTSPEED_API_KEY yokken herkes erişebilmeli', async () => {
-      delete process.env.FORTSPEED_API_KEY;
+    it('LINKOPS_API_KEY yokken herkes erişebilmeli', async () => {
+      delete process.env.LINKOPS_API_KEY;
       mockQuery
         .mockResolvedValueOnce({ rows: [] })  // getAuthConfig (existing)
         .mockResolvedValueOnce({ rows: [] }); // INSERT/UPDATE AuthConfig
@@ -180,8 +180,8 @@ describe('Auth Routes', () => {
       expect(res.statusCode).toBe(200);
     });
 
-    it('FORTSPEED_API_KEY varken doğru key ile erişilebilmeli', async () => {
-      process.env.FORTSPEED_API_KEY = 'test-api-key-12345';
+    it('LINKOPS_API_KEY varken doğru key ile erişilebilmeli', async () => {
+      process.env.LINKOPS_API_KEY = 'test-api-key-12345';
       mockQuery
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] });
@@ -196,11 +196,11 @@ describe('Auth Routes', () => {
       });
 
       expect(res.statusCode).toBe(200);
-      delete process.env.FORTSPEED_API_KEY;
+      delete process.env.LINKOPS_API_KEY;
     });
 
-    it('FORTSPEED_API_KEY varken yanlış key ile 403 döndürmeli', async () => {
-      process.env.FORTSPEED_API_KEY = 'correct-key';
+    it('LINKOPS_API_KEY varken yanlış key ile 403 döndürmeli', async () => {
+      process.env.LINKOPS_API_KEY = 'correct-key';
 
       const res = await app.inject({
         method: 'PUT', url: '/api/auth/config',
@@ -212,11 +212,11 @@ describe('Auth Routes', () => {
       });
 
       expect(res.statusCode).toBe(403);
-      delete process.env.FORTSPEED_API_KEY;
+      delete process.env.LINKOPS_API_KEY;
     });
 
-    it('FORTSPEED_API_KEY varken key olmadan 403 döndürmeli', async () => {
-      process.env.FORTSPEED_API_KEY = 'correct-key';
+    it('LINKOPS_API_KEY varken key olmadan 403 döndürmeli', async () => {
+      process.env.LINKOPS_API_KEY = 'correct-key';
 
       const res = await app.inject({
         method: 'PUT', url: '/api/auth/config',
@@ -225,7 +225,7 @@ describe('Auth Routes', () => {
       });
 
       expect(res.statusCode).toBe(403);
-      delete process.env.FORTSPEED_API_KEY;
+      delete process.env.LINKOPS_API_KEY;
     });
 
     it('geçersiz provider 400 döndürmeli', async () => {

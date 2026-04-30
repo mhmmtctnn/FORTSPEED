@@ -513,7 +513,7 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
       .then(r => r.json())
       .then((data: any) => {
         if (data.ok) {
-          sessionStorage.setItem('fortspeed_auth', '1');
+          sessionStorage.setItem('linkops_auth', '1');
           window.history.replaceState({}, '', window.location.pathname);
           onLogin();
         } else {
@@ -548,7 +548,7 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
       });
       const data = await res.json() as any;
       if (data.ok) {
-        sessionStorage.setItem('fortspeed_auth', '1');
+        sessionStorage.setItem('linkops_auth', '1');
         onLogin();
       } else {
         setLoading(false);
@@ -586,7 +586,7 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
           <ShieldCheck size={21} color="#38bdf8" />
         </div>
         <div>
-          <div style={{ fontSize: '0.96rem', fontWeight: 800, color: '#f0f6ff', letterSpacing: '0.05em' }}>FORTSPEED</div>
+          <div style={{ fontSize: '0.96rem', fontWeight: 800, color: '#f0f6ff', letterSpacing: '0.05em' }}>LINKOPS</div>
           <div style={{ fontSize: '0.61rem', color: 'rgba(56,189,248,0.6)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>NOC Intelligence Platform</div>
         </div>
       </div>
@@ -736,7 +736,7 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
             {/* Footer */}
             <div style={{ marginTop: 26, paddingTop: 18, borderTop: '1px solid rgba(56,189,248,0.09)', textAlign: 'center' }}>
               <div style={{ fontSize: '0.69rem', color: 'rgba(77,104,144,0.75)', lineHeight: 1.8 }}>🔒 Tüm bağlantılar şifrelenmiştir · Oturum güvenli</div>
-              <div style={{ fontSize: '0.62rem', color: 'rgba(56,189,248,0.25)', marginTop: 5 }}>FORTSPEED NOC v1.4 · Yetkisiz erişim yasaktır</div>
+              <div style={{ fontSize: '0.62rem', color: 'rgba(56,189,248,0.25)', marginTop: 5 }}>LINKOPS NOC · Yetkisiz erişim yasaktır</div>
             </div>
           </div>
         </div>

@@ -225,7 +225,7 @@ const translations = {
     last_webhook:         'Son webhook',
 
     // ── PDF dışa aktarma ──
-    pdf_title:            'FORTSPEED - Ağ Performans Raporu',
+    pdf_title:            'LINKOPS - Ağ Performans Raporu',
     pdf_date_label:       'Tarih',
 
     // ── Tablo sütunları ──
@@ -472,7 +472,7 @@ const translations = {
     last_webhook:         'Last webhook',
 
     // ── PDF export ──
-    pdf_title:            'FORTSPEED - Network Performance Report',
+    pdf_title:            'LINKOPS - Network Performance Report',
     pdf_date_label:       'Date',
 
     // ── Table columns ──
@@ -719,7 +719,7 @@ const translations = {
     last_webhook:         'Dernier webhook',
 
     // ── Export PDF ──
-    pdf_title:            'FORTSPEED - Rapport de performances réseau',
+    pdf_title:            'LINKOPS - Rapport de performances réseau',
     pdf_date_label:       'Date',
 
     // ── Colonnes de tableau ──
@@ -966,7 +966,7 @@ const translations = {
     last_webhook:         'آخر webhook',
 
     // ── تصدير PDF ──
-    pdf_title:            'FORTSPEED - تقرير أداء الشبكة',
+    pdf_title:            'LINKOPS - تقرير أداء الشبكة',
     pdf_date_label:       'التاريخ',
 
     // ── أعمدة الجدول ──

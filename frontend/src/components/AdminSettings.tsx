@@ -325,7 +325,7 @@ function AuthSettings() {
           <FieldRow label="Client ID">
             <input className="form-control" style={{ fontSize: '0.84rem' }}
               value={keycloak.clientId} onChange={e => setKc('clientId', e.target.value)}
-              placeholder="fortspeed" />
+              placeholder="linkops" />
           </FieldRow>
           <FieldRow label="Client Secret">
             <input className="form-control" type="password" style={{ fontSize: '0.84rem' }}

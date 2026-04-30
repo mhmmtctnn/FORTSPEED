@@ -574,11 +574,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean>(
-    () => sessionStorage.getItem('fortspeed_auth') === '1'
+    () => sessionStorage.getItem('linkops_auth') === '1'
   );
 
   const handleLogout = () => {
-    sessionStorage.removeItem('fortspeed_auth');
+    sessionStorage.removeItem('linkops_auth');
     setAuthenticated(false);
   };
 

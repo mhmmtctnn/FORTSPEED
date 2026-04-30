@@ -1,6 +1,33 @@
 # Changelog
 
-All notable changes to FORTSPEED are documented here.
+All notable changes to LINKOPS are documented here.
+
+---
+
+## [v1.21.0] — 2026-04-30
+
+### LINKOPS Yeniden Adlandırma, SDWAN prev_state Düzeltmesi, Yeni Favicon
+
+#### Marka Güncellemesi — FORTSPEED → LINKOPS
+- **`frontend/index.html`**: Sayfa başlığı ve meta açıklaması `FORTSPEED` → `LINKOPS NOC Dashboard` olarak güncellendi.
+- **`frontend/public/favicon.svg`**: Yeni kurumsal LINKOPS ikonu ile değiştirildi.
+- **`frontend/src/components/LoginScreen.tsx`**: Login ekranındaki marka adı ve footer metni `LINKOPS` olarak güncellendi; `sessionStorage` anahtarı `fortspeed_auth` → `linkops_auth` olarak değiştirildi (versiyon eki kaldırıldı).
+- **`frontend/src/components/AdminSettings.tsx`**: İlgili marka referansları güncellendi.
+- **`backend/src/middleware/itai.ts`**: `FORTSPEED_API_KEY` env değişkeni → `LINKOPS_API_KEY`; ITAI dashboard başlığı ve `/health` endpoint module adı `linkops-noc` olarak güncellendi.
+- **`docker-compose.yml`**: `FORTSPEED_API_KEY` → `LINKOPS_API_KEY` env değişkeni.
+- **`.env.example`**: Yeni `LINKOPS_API_KEY` değişkeni ile güncellendi.
+- **`frontend/src/i18n/translations.ts`**: Çeviri dosyasındaki marka adı referansları güncellendi.
+
+#### Backend — reports.ts — SDWAN prev_state Düzeltmesi
+- **`COALESCE(e.OldState, LAG(...))` optimizasyonu**: SDWAN stability sorgusunda `prev_state` hesaplaması artık `e.OldState` sütununu tercih ediyor; yalnızca `OldState` null ise `LAG()` window fonksiyonuna düşüyor. Doğrudan kaydedilen önceki durum bilgisi daha güvenilir transition sayımı sağlıyor.
+
+#### CI/CD
+- **`.github/workflows/ci.yml`**: CI iş akışı güncellemeleri; LINKOPS marka adına uyumlu hale getirildi.
+
+#### Diğer
+- **`CLAUDE.md`**: Geliştirici notları güncellendi.
+- **`backend/src/__tests__`**: `auth.test.ts`, `itai.test.ts`, `response-contracts.test.ts` — LINKOPS env/session key değişikliklerine uyarlandı.
+- **`frontend/src/__tests__/App.test.tsx`**: `linkops_auth` session key güncellemesine uyarlandı.
 
 ---
 

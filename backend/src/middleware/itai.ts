@@ -22,7 +22,7 @@ function getJwtSecret(): string {
 }
 
 function getApiKey(): string {
-  return process.env.FORTSPEED_API_KEY || '';
+  return process.env.LINKOPS_API_KEY || '';
 }
 
 // --- JWT HS256 Verification ---
@@ -74,7 +74,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FORTSPEED NOC</title>
+<title>LINKOPS NOC</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0}
@@ -104,7 +104,7 @@ tr:hover td{background:#334155}
 <body>
 <div class="hdr">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-  <h1>FORTSPEED NOC Dashboard</h1>
+  <h1>LINKOPS NOC Dashboard</h1>
   <span class="badge badge-ok" id="status">Yukleniyor...</span>
   <div style="flex:1"></div>
   <button class="btn" id="refresh-btn">Yenile</button>
@@ -214,7 +214,7 @@ export async function registerItaiMiddleware(
 
   // Health endpoint
   fastify.get('/health', async () => {
-    return { status: 'healthy', module: 'fortspeed-noc', itai_mode: isItaiMode };
+    return { status: 'healthy', module: 'linkops-noc', itai_mode: isItaiMode };
   });
 
   // SSO Endpoint — always registered, returns 403 when disabled

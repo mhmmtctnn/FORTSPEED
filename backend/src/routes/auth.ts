@@ -169,9 +169,9 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
     }
   });
 
-  // PUT /api/auth/config — save config (requires FORTSPEED_API_KEY if set)
+  // PUT /api/auth/config — save config (requires LINKOPS_API_KEY if set)
   fastify.put('/api/auth/config', async (request, reply) => {
-    const apiKey = process.env.FORTSPEED_API_KEY;
+    const apiKey = process.env.LINKOPS_API_KEY;
     if (apiKey) {
       const authHeader = (request.headers.authorization || '').replace(/^Bearer\s+/i, '');
       const keyHeader = (request.headers['x-api-key'] as string) || '';

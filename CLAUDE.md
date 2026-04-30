@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**FORTSPEED** is a NOC (Network Operations Center) platform for monitoring internet speed test metrics across distributed mission sites. It ingests FortiGate speed test data via webhook and visualizes it in real-time.
+**LINKOPS** is a NOC (Network Operations Center) platform for monitoring internet speed test metrics across distributed mission sites. It ingests FortiGate speed test data via webhook and visualizes it in real-time.
 
 **Stack:** React 18 + Vite frontend, Fastify 4 backend, PostgreSQL 16, Redis (pub/sub), Nginx, Docker Compose.
 
@@ -121,7 +121,7 @@ NODE_ENV=development
 PORT=3000
 ITAI_MODE=false
 ITAI_JWT_SECRET=<base64-jwt-secret>
-FORTSPEED_API_KEY=<api-key>
+LINKOPS_API_KEY=<api-key>
 ```
 
 ## CI/CD
